@@ -3,6 +3,8 @@
 // persisted. GET reports whether the key is configured (for the UI status line).
 
 export const runtime = "nodejs";
+// Image generation can take 10–20s, plus retries on capacity errors.
+export const maxDuration = 60;
 
 const CREATE_PROMPT =
   "Remove the background, then change the person in the photo into a Disney/Pixar like cartoon character. " +
@@ -47,21 +49,29 @@ export async function POST(req) {
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.5-flash";
   const prompt = editInstruction ? editPrompt(editInstruction) : CREATE_PROMPT;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ inlineData: { mimeType, data } }, { text: prompt }],
-          },
-        ],
-        generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
-      }),
-    }
-  );
+  // Gemini sheds load with 503 UNAVAILABLE during demand spikes; these are
+  // usually transient, so retry with backoff before giving up.
+  let res;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ inlineData: { mimeType, data } }, { text: prompt }],
+            },
+          ],
+          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+        }),
+      }
+    );
+    if (res.status !== 503 && res.status !== 429) break;
+    if (attempt >= 3) break;
+    await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
