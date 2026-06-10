@@ -249,6 +249,7 @@ export default function Home() {
               workerOverride={workerOverride}
               setWorkerOverride={setWorkerOverride}
               onContinue={() => setStep(2)}
+              onRetry={() => photo && stylize(photo)}
             />
           </section>
         )}

@@ -32,6 +32,7 @@ export default function UploadPanel({
   workerOverride,
   setWorkerOverride,
   onContinue,
+  onRetry,
 }) {
   const inputRef = useRef();
   const [drag, setDrag] = useState(false);
@@ -104,7 +105,9 @@ export default function UploadPanel({
         </div>
         {stylizedIsMock && stylized && (
           <p className="card-sub" style={{ marginTop: "var(--spacing-12)" }}>
-            Mock mode — Gemini isn’t configured, so this is a CSS-filter stand-in of your photo.
+            {pipeline.gemini
+              ? "Gemini couldn’t stylize this time — showing a CSS-filter stand-in instead. Retry below."
+              : "Mock mode — Gemini isn’t configured, so this is a CSS-filter stand-in of your photo."}
           </p>
         )}
         {stylizeError && <p className="error-text">{stylizeError}</p>}
@@ -113,6 +116,11 @@ export default function UploadPanel({
             <button type="button" className="btn-primary" onClick={onContinue}>
               Continue to Generate
             </button>
+            {pipeline.gemini && stylizedIsMock && (
+              <button type="button" className="btn-small" onClick={onRetry}>
+                Retry stylize
+              </button>
+            )}
           </div>
         )}
       </div>
