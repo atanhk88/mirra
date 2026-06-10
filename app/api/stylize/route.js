@@ -85,7 +85,21 @@ export async function POST(req) {
   const parts = json.candidates?.[0]?.content?.parts || [];
   const imagePart = parts.find((p) => p.inlineData?.data);
   if (!imagePart) {
-    return Response.json({ error: "Gemini returned no image." }, { status: 502 });
+    // Surface whatever Gemini said instead of an image — usually either a
+    // text-only model answering in prose, or a refusal explaining itself.
+    const text = parts
+      .map((p) => p.text)
+      .filter(Boolean)
+      .join(" ")
+      .slice(0, 400);
+    const finishReason = json.candidates?.[0]?.finishReason;
+    const blockReason = json.promptFeedback?.blockReason;
+    const detail =
+      text ||
+      (blockReason && `Prompt blocked: ${blockReason}.`) ||
+      (finishReason && `Finish reason: ${finishReason}.`) ||
+      "Empty response — the configured GEMINI_IMAGE_MODEL may not support image output.";
+    return Response.json({ error: `Gemini returned no image. ${detail}` }, { status: 502 });
   }
 
   const outMime = imagePart.inlineData.mimeType || "image/png";
