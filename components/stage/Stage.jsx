@@ -10,9 +10,10 @@ import { OrbitControls, ContactShadows } from "@react-three/drei";
 import MockAvatar from "./MockAvatar";
 import GeneratedModel from "./GeneratedModel";
 import RiggedModel from "./RiggedModel";
+import PaperPuppet from "./PaperPuppet";
 import Confetti from "./Confetti";
 
-export default function Stage({ mode, options, modelUrl, rigged }) {
+export default function Stage({ mode, options, modelUrl, puppetUrl, rigged }) {
   return (
     <Canvas
       className="stage-canvas"
@@ -31,6 +32,8 @@ export default function Stage({ mode, options, modelUrl, rigged }) {
           <RiggedModel url={rigged.url} ext={rigged.ext} />
         ) : mode === "generated" && modelUrl ? (
           <GeneratedModel url={modelUrl} />
+        ) : mode === "puppet" && puppetUrl ? (
+          <PaperPuppet url={puppetUrl} />
         ) : (
           <MockAvatar options={options} />
         )}

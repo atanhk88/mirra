@@ -16,7 +16,7 @@ const BACKDROPS = [
   { id: "blush", name: "Blush", chip: "var(--color-blush-finish)" },
 ];
 
-export default function StageCard({ mode, options, modelUrl, rigged }) {
+export default function StageCard({ mode, options, modelUrl, puppetUrl, rigged }) {
   const [backdrop, setBackdrop] = useState("fog");
 
   const modeLabel =
@@ -24,14 +24,16 @@ export default function StageCard({ mode, options, modelUrl, rigged }) {
       ? "Rigged model — Mixamo clips drive matching reactions"
       : mode === "generated"
         ? "Generated model — whole-body puppet reactions"
-        : "Mock avatar — procedural demo character";
+        : mode === "puppet"
+          ? "2D paper puppet — stylized reference, animated live"
+          : "Mock avatar — procedural demo character";
 
   return (
     <div className="stage-card">
       <h3 className="card-title">Your avatar</h3>
       <p className="card-sub">Drag to orbit. Reactions fire from the panels on the right.</p>
       <div className="stage-backdrop" data-backdrop={backdrop}>
-        <Stage mode={mode} options={options} modelUrl={modelUrl} rigged={rigged} />
+        <Stage mode={mode} options={options} modelUrl={modelUrl} puppetUrl={puppetUrl} rigged={rigged} />
         <div className="swatch-bar" role="group" aria-label="Stage backdrop">
           {BACKDROPS.map((b) => (
             <button

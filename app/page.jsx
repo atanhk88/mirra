@@ -28,6 +28,9 @@ export default function Home() {
   const [stylizedIsMock, setStylizedIsMock] = useState(false);
   const [stylizeError, setStylizeError] = useState(null);
 
+  const [puppetUrl, setPuppetUrl] = useState(null);
+  const [puppetState, setPuppetState] = useState("idle"); // idle | processing | done | error
+
   const [gen, setGen] = useState({ state: "idle" });
   const [modelUrl, setModelUrl] = useState(null);
   const [objUrl, setObjUrl] = useState(null);
@@ -82,11 +85,26 @@ export default function Home() {
     }
   }
 
+  async function startPuppet(imageDataUrl) {
+    setPuppetUrl(null);
+    setPuppetState("processing");
+    try {
+      const { removeBg } = await import("@/lib/removeBg");
+      const url = await removeBg(imageDataUrl);
+      setPuppetUrl(url);
+      setPuppetState("done");
+    } catch {
+      setPuppetState("error");
+    }
+  }
+
   function handlePhoto(dataUrl) {
     setPhoto(dataUrl);
     setModelUrl(null);
     setRigged(null);
-    stylize(dataUrl);
+    setPuppetUrl(null);
+    setPuppetState("idle");
+    stylize(dataUrl).then((result) => startPuppet(result));
   }
 
   function startMockGeneration() {
@@ -191,7 +209,7 @@ export default function Home() {
   }
 
   const pipelineMode = pipeline.gemini && (pipeline.worker || workerOverride.trim().length > 0);
-  const avatarMode = rigged ? "rigged" : modelUrl ? "generated" : "mock";
+  const avatarMode = rigged ? "rigged" : modelUrl ? "generated" : puppetUrl ? "puppet" : "mock";
   const stepDone = { 1: !!stylized, 2: gen.state === "done", 3: false };
 
   return (
@@ -265,11 +283,13 @@ export default function Home() {
               stylizing={stylizing}
               stylizedIsMock={stylizedIsMock}
               stylizeError={stylizeError}
+              puppetState={puppetState}
               pipeline={pipeline}
               workerOverride={workerOverride}
               setWorkerOverride={setWorkerOverride}
+              onPuppet={() => setStep(3)}
               onContinue={() => setStep(2)}
-              onRetry={() => photo && stylize(photo)}
+              onRetry={() => photo && stylize(photo).then((r) => startPuppet(r))}
             />
           </section>
         )}
@@ -297,7 +317,7 @@ export default function Home() {
               <p className="section-sub">It idles on its own and reacts to everything you log.</p>
             </div>
             <div className="stage-grid">
-              <StageCard mode={avatarMode} options={options} modelUrl={modelUrl} rigged={rigged} />
+              <StageCard mode={avatarMode} options={options} modelUrl={modelUrl} puppetUrl={puppetUrl} rigged={rigged} />
               <div className="panel-stack">
                 <AchievementPanel />
                 <CustomizePanel

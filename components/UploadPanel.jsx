@@ -28,9 +28,11 @@ export default function UploadPanel({
   stylizing,
   stylizedIsMock,
   stylizeError,
+  puppetState,
   pipeline,
   workerOverride,
   setWorkerOverride,
+  onPuppet,
   onContinue,
   onRetry,
 }) {
@@ -112,14 +114,41 @@ export default function UploadPanel({
         )}
         {stylizeError && <p className="error-text">{stylizeError}</p>}
         {stylized && !stylizing && (
-          <div className="panel-actions">
-            <button type="button" className="btn-primary" onClick={onContinue}>
-              Continue to Generate
-            </button>
-            {pipeline.gemini && stylizedIsMock && (
-              <button type="button" className="btn-small" onClick={onRetry}>
-                Retry stylize
-              </button>
+          <div className="panel-actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--spacing-8)" }}>
+            <div style={{ display: "flex", gap: "var(--spacing-8)", flexWrap: "wrap" }}>
+              {puppetState === "done" ? (
+                <button type="button" className="btn-primary" onClick={onPuppet}>
+                  Meet your 2D avatar →
+                </button>
+              ) : puppetState === "processing" ? (
+                <button type="button" className="btn-primary" disabled>
+                  Preparing 2D avatar…
+                </button>
+              ) : (
+                <button type="button" className="btn-primary" onClick={onContinue}>
+                  Continue to Generate
+                </button>
+              )}
+              {puppetState !== "idle" && (
+                <button type="button" className="btn-small" onClick={onContinue}>
+                  Generate 3D instead
+                </button>
+              )}
+              {pipeline.gemini && stylizedIsMock && (
+                <button type="button" className="btn-small" onClick={onRetry}>
+                  Retry stylize
+                </button>
+              )}
+            </div>
+            {puppetState === "processing" && (
+              <p className="card-sub" style={{ margin: 0 }}>
+                Removing background in your browser — this takes 10–30 s on first load (the model caches after that).
+              </p>
+            )}
+            {puppetState === "error" && (
+              <p className="card-sub" style={{ margin: 0 }}>
+                Background removal failed — you can still generate a 3D avatar.
+              </p>
             )}
           </div>
         )}
