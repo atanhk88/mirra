@@ -166,21 +166,6 @@ export default function Home() {
         </div>
       </nav>
 
-      <section className="hero">
-        <p className="hero-eyebrow">Mirra</p>
-        <h1 className="hero-headline">You, animated.</h1>
-        <p className="hero-sub">
-          Upload a full-body photo and meet your Pixar-style animated self — it breathes, blinks, and celebrates your
-          wins right in the page.
-        </p>
-        <div className="hero-cta">
-          <button type="button" className="btn-primary" onClick={() => setStep(1)}>
-            Upload a photo
-          </button>
-        </div>
-        <p className="hero-note">Your animated avatars are saved in your browser — nothing is stored on a server.</p>
-      </section>
-
       <main className="page" id="studio">
         {step === 1 && (
           <section className="section" aria-label="Step 1 — Photo">

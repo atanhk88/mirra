@@ -50,9 +50,10 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
   const [clips, setClips] = useState(initialClips);
   const [activeReaction, setActiveReaction] = useState(null);
   const [idleIdx, setIdleIdx] = useState(0);
-  const [note, setNote] = useState(null);
+  const [error, setError] = useState(null);
+  const [waitingFor, setWaitingFor] = useState(null);
   const [generating, setGenerating] = useState(null);
-  const s = useRef({ clips: { ...initialClips }, jobs: {}, alive: true }).current;
+  const s = useRef({ clips: { ...initialClips }, jobs: {}, alive: true, prepared: null }).current;
 
   function ensureClip(motion) {
     if (s.clips[motion]) return Promise.resolve(s.clips[motion]);
@@ -83,6 +84,7 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
             }
             s.clips[motion] = url;
             setClips({ ...s.clips });
+            setError(null);
             return url;
           }
           if (status.status === "error") throw new Error(status.message || "Animation failed.");
@@ -104,7 +106,7 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
       try {
         await ensureClip("idle");
       } catch (err) {
-        if (s.alive) setNote(String(err.message || err));
+        if (s.alive) setError(String(err.message || err));
         return;
       }
       // Background queue: idle variation first, then every reaction.
@@ -127,15 +129,14 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
         setActiveReaction({ motion: name, url: cached });
         return;
       }
-      setNote(`“${REACTION_LABELS[name] || name}” is still animating — it plays the moment it’s ready.`);
+      setWaitingFor(name);
       try {
         const url = await ensureClip(name);
-        if (url && s.alive) {
-          setNote(null);
-          setActiveReaction({ motion: name, url });
-        }
+        if (url && s.alive) setActiveReaction({ motion: name, url });
       } catch (err) {
-        if (s.alive) setNote(String(err.message || err));
+        if (s.alive) setError(String(err.message || err));
+      } finally {
+        if (s.alive) setWaitingFor(null);
       }
     });
 
@@ -158,6 +159,7 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
   }
 
   const readyCount = AUTO_QUEUE.filter((m) => clips[m]).length;
+  const queuePct = Math.round((readyCount / AUTO_QUEUE.length) * 100);
 
   return (
     <div className="video-avatar">
@@ -176,16 +178,37 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
       ) : (
         <>
           <img src={image} alt="Stylized avatar" />
-          <div className="video-avatar-overlay">
-            Bringing your avatar to life — the idle loop takes about a minute to animate…
-          </div>
+          {!error && (
+            <div className="video-avatar-overlay">
+              <span className="spinner" aria-hidden="true" />
+              Bringing your avatar to life — the idle loop takes about a minute…
+              <div className="progress-indeterminate" role="progressbar" aria-label="Generating idle animation">
+                <span />
+              </div>
+            </div>
+          )}
         </>
       )}
-      {note ? (
-        <div className="video-avatar-note">{note}</div>
-      ) : generating ? (
+
+      {error ? (
+        <div className="video-avatar-note">{error}</div>
+      ) : waitingFor ? (
+        <div className="video-avatar-note">
+          <span className="spinner" aria-hidden="true" />
+          Animating “{REACTION_LABELS[waitingFor] || waitingFor}” — it plays the moment it’s ready…
+        </div>
+      ) : generating && idleUrl ? (
         <div className="video-avatar-note video-avatar-note--quiet">
           Animating “{REACTION_LABELS[generating] || generating}” in the background ({readyCount}/{AUTO_QUEUE.length})
+          <div
+            className="progress-track"
+            role="progressbar"
+            aria-valuenow={readyCount}
+            aria-valuemin={0}
+            aria-valuemax={AUTO_QUEUE.length}
+          >
+            <div className="progress-fill" style={{ width: `${queuePct}%` }} />
+          </div>
         </div>
       ) : null}
     </div>
