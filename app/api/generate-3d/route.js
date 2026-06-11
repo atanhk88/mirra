@@ -178,6 +178,14 @@ export async function POST(req) {
     const imageUrl = await replicateUploadImage(backend.token, body.image);
     const headers = { authorization: `Bearer ${backend.token}`, "content-type": "application/json" };
     const input = { image: imageUrl };
+    // Quality knobs for the Hunyuan family (guarded so a custom
+    // REPLICATE_MODEL with a different schema isn't sent unknown fields).
+    // octree_resolution 512 is the big one — the 256 default loses face detail.
+    if (backend.model.includes("hunyuan")) {
+      input.steps = 50;
+      input.octree_resolution = 512;
+      input.remove_background = true;
+    }
 
     // REPLICATE_MODEL may pin a version ("owner/name:versionhash"). Without a
     // pin, try the model-scoped endpoint first (works for official models),
