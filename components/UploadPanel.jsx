@@ -28,11 +28,10 @@ export default function UploadPanel({
   stylizing,
   stylizedIsMock,
   stylizeError,
-  puppetState,
   pipeline,
   workerOverride,
   setWorkerOverride,
-  onPuppet,
+  onAnimate2D,
   onContinue,
   onRetry,
 }) {
@@ -116,40 +115,30 @@ export default function UploadPanel({
         {stylized && !stylizing && (
           <div className="panel-actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--spacing-8)" }}>
             <div style={{ display: "flex", gap: "var(--spacing-8)", flexWrap: "wrap" }}>
-              {puppetState === "done" ? (
+              {pipeline.video ? (
                 <>
-                  <button type="button" className="btn-primary" onClick={onPuppet}>
-                    Meet your 2D avatar →
+                  <button type="button" className="btn-primary" onClick={onAnimate2D}>
+                    Animate me in 2D →
                   </button>
                   <button type="button" className="btn-small" onClick={onContinue}>
                     Generate 3D instead
                   </button>
                 </>
-              ) : puppetState === "processing" ? (
-                <>
-                  <button type="button" className="btn-primary" disabled>
-                    Preparing 2D avatar…
-                  </button>
-                  <button type="button" className="btn-small" onClick={onContinue}>
-                    Skip — Generate 3D
-                  </button>
-                </>
               ) : (
-                <>
-                  <button type="button" className="btn-primary" onClick={onContinue}>
-                    Continue to Generate
-                  </button>
-                  {pipeline.gemini && stylizedIsMock && (
-                    <button type="button" className="btn-small" onClick={onRetry}>
-                      Retry stylize
-                    </button>
-                  )}
-                </>
+                <button type="button" className="btn-primary" onClick={onContinue}>
+                  Continue to Generate
+                </button>
+              )}
+              {pipeline.gemini && stylizedIsMock && (
+                <button type="button" className="btn-small" onClick={onRetry}>
+                  Retry stylize
+                </button>
               )}
             </div>
-            {puppetState === "processing" && (
+            {pipeline.video && (
               <p className="card-sub" style={{ margin: 0 }}>
-                Removing background in your browser — takes 10–30 s on first run (model caches after that).
+                2D animation generates real motion clips (breathing, blinking, reactions) from your reference — about a
+                minute and ~$0.10 per clip on your Replicate account, cached once generated.
               </p>
             )}
           </div>

@@ -26,8 +26,9 @@ Deployable to Vercel as-is (`next build`).
 | `GEMINI_IMAGE_MODEL` | Gemini image model id (default `gemini-3.5-flash`; must support image output) |
 | `MESHY_API_KEY` | Meshy hosted image-to-3D — character-focused, free monthly credit tier |
 | `MESHY_AI_MODEL` | Meshy model generation (default `meshy-5`) |
-| `REPLICATE_API_TOKEN` | Replicate token — hosted Hunyuan3D (~$0.1/generation) |
+| `REPLICATE_API_TOKEN` | Replicate token — hosted Hunyuan3D (~$0.1/generation) and 2D motion clips |
 | `REPLICATE_MODEL` | Replicate model (default `ndreca/hunyuan3d-2`, which returns a textured mesh) |
+| `REPLICATE_VIDEO_MODEL` | Image-to-video model for 2D animation (default `bytedance/seedance-1-lite`, ~$0.02/s) |
 | `HUNYUAN_SERVER_URL` | Base URL of a self-hosted Hunyuan3D worker (see [docs/HUNYUAN_SETUP.md](docs/HUNYUAN_SETUP.md)) |
 
 For 3D generation, set **one of** `MESHY_API_KEY` (hosted, best avatar quality), `REPLICATE_API_TOKEN`

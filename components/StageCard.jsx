@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
+import VideoAvatar from "./VideoAvatar";
 
 // three.js must never run on the server.
 const Stage = dynamic(() => import("./stage/Stage"), {
@@ -16,7 +17,7 @@ const BACKDROPS = [
   { id: "blush", name: "Blush", chip: "var(--color-blush-finish)" },
 ];
 
-export default function StageCard({ mode, options, modelUrl, puppetUrl, rigged }) {
+export default function StageCard({ mode, options, modelUrl, puppetUrl, rigged, stylized }) {
   const [backdrop, setBackdrop] = useState("fog");
 
   const modeLabel =
@@ -24,30 +25,38 @@ export default function StageCard({ mode, options, modelUrl, puppetUrl, rigged }
       ? "Rigged model — Mixamo clips drive matching reactions"
       : mode === "generated"
         ? "Generated model — whole-body puppet reactions"
-        : mode === "puppet"
-          ? "2D paper puppet — stylized reference, animated live"
+        : mode === "video"
+          ? "2D animated — AI motion clips from your reference"
           : "Mock avatar — procedural demo character";
 
   return (
     <div className="stage-card">
       <h3 className="card-title">Your avatar</h3>
-      <p className="card-sub">Drag to orbit. Reactions fire from the panels on the right.</p>
+      <p className="card-sub">
+        {mode === "video" ? "It breathes and blinks on its own — reactions fire from the panels on the right." : "Drag to orbit. Reactions fire from the panels on the right."}
+      </p>
       <div className="stage-backdrop" data-backdrop={backdrop}>
-        <Stage mode={mode} options={options} modelUrl={modelUrl} puppetUrl={puppetUrl} rigged={rigged} />
-        <div className="swatch-bar" role="group" aria-label="Stage backdrop">
-          {BACKDROPS.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              className="swatch"
-              style={{ background: b.chip }}
-              aria-pressed={backdrop === b.id}
-              aria-label={`${b.name} backdrop`}
-              title={b.name}
-              onClick={() => setBackdrop(b.id)}
-            />
-          ))}
-        </div>
+        {mode === "video" && stylized ? (
+          <VideoAvatar image={stylized} />
+        ) : (
+          <>
+            <Stage mode={mode} options={options} modelUrl={modelUrl} puppetUrl={puppetUrl} rigged={rigged} />
+            <div className="swatch-bar" role="group" aria-label="Stage backdrop">
+              {BACKDROPS.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  className="swatch"
+                  style={{ background: b.chip }}
+                  aria-pressed={backdrop === b.id}
+                  aria-label={`${b.name} backdrop`}
+                  title={b.name}
+                  onClick={() => setBackdrop(b.id)}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className="stage-meta">
         <span className="stage-mode">{modeLabel}</span>
