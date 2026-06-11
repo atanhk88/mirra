@@ -58,6 +58,25 @@ function pickMeshUrl(output) {
   return null;
 }
 
+// model → latest version id, cached for the lifetime of the lambda. Creating
+// predictions by version through /predictions keeps us to a single
+// create-prediction call per generation — accounts with <$5 credit are
+// throttled to a burst of 1 such call per minute.
+const versionCache = new Map();
+
+async function resolveReplicateVersion(model, token) {
+  if (versionCache.has(model)) return versionCache.get(model);
+  const res = await fetch(`${REPLICATE_API}/models/${model}`, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const json = await res.json().catch(() => ({}));
+  const id = json.latest_version?.id || null;
+  if (id) versionCache.set(model, id);
+  return id;
+}
+
 async function replicateUploadImage(token, base64) {
   const buf = Buffer.from(base64, "base64");
   // Data URLs are only accepted for small payloads; upload via the files API
@@ -187,42 +206,27 @@ export async function POST(req) {
       input.remove_background = true;
     }
 
-    // REPLICATE_MODEL may pin a version ("owner/name:versionhash"). Without a
-    // pin, try the model-scoped endpoint first (works for official models),
-    // then fall back to resolving the latest version — community models like
-    // the default ndreca/hunyuan3d-2 are only runnable via /predictions with
-    // an explicit version.
-    let [model, version] = backend.model.split(":");
+    // REPLICATE_MODEL may pin a version ("owner/name:versionhash"); otherwise
+    // resolve the latest one. One retry on 429 — low-credit accounts get a
+    // burst allowance of a single create-prediction call per minute.
+    const [model, pinnedVersion] = backend.model.split(":");
     let res;
     try {
+      const version = pinnedVersion || (await resolveReplicateVersion(model, backend.token));
       if (!version) {
-        res = await fetch(`${REPLICATE_API}/models/${model}/predictions`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ input }),
-        });
-        if (res.status === 404 || res.status === 405) {
-          const modelRes = await fetch(`${REPLICATE_API}/models/${model}`, {
-            headers: { authorization: `Bearer ${backend.token}` },
-            cache: "no-store",
-          });
-          const modelJson = await modelRes.json().catch(() => ({}));
-          version = modelJson.latest_version?.id;
-          if (!version) {
-            return Response.json(
-              { error: `Replicate model "${model}" not found or has no published version.` },
-              { status: 502 }
-            );
-          }
-          res = null;
-        }
+        return Response.json(
+          { error: `Replicate model "${model}" not found or has no published version.` },
+          { status: 502 }
+        );
       }
-      if (!res) {
+      for (let attempt = 0; ; attempt++) {
         res = await fetch(`${REPLICATE_API}/predictions`, {
           method: "POST",
           headers,
           body: JSON.stringify({ version, input }),
         });
+        if (res.status !== 429 || attempt >= 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 12000));
       }
     } catch (err) {
       return Response.json({ error: `Replicate unreachable: ${err.message}` }, { status: 502 });
