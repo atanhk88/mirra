@@ -176,13 +176,46 @@ export async function POST(req) {
 
   if (backend.type === "replicate") {
     const imageUrl = await replicateUploadImage(backend.token, body.image);
+    const headers = { authorization: `Bearer ${backend.token}`, "content-type": "application/json" };
+    const input = { image: imageUrl };
+
+    // REPLICATE_MODEL may pin a version ("owner/name:versionhash"). Without a
+    // pin, try the model-scoped endpoint first (works for official models),
+    // then fall back to resolving the latest version — community models like
+    // the default ndreca/hunyuan3d-2 are only runnable via /predictions with
+    // an explicit version.
+    let [model, version] = backend.model.split(":");
     let res;
     try {
-      res = await fetch(`${REPLICATE_API}/models/${backend.model}/predictions`, {
-        method: "POST",
-        headers: { authorization: `Bearer ${backend.token}`, "content-type": "application/json" },
-        body: JSON.stringify({ input: { image: imageUrl } }),
-      });
+      if (!version) {
+        res = await fetch(`${REPLICATE_API}/models/${model}/predictions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ input }),
+        });
+        if (res.status === 404 || res.status === 405) {
+          const modelRes = await fetch(`${REPLICATE_API}/models/${model}`, {
+            headers: { authorization: `Bearer ${backend.token}` },
+            cache: "no-store",
+          });
+          const modelJson = await modelRes.json().catch(() => ({}));
+          version = modelJson.latest_version?.id;
+          if (!version) {
+            return Response.json(
+              { error: `Replicate model "${model}" not found or has no published version.` },
+              { status: 502 }
+            );
+          }
+          res = null;
+        }
+      }
+      if (!res) {
+        res = await fetch(`${REPLICATE_API}/predictions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ version, input }),
+        });
+      }
     } catch (err) {
       return Response.json({ error: `Replicate unreachable: ${err.message}` }, { status: 502 });
     }
