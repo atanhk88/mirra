@@ -7,16 +7,22 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const CREATE_PROMPT =
-  "Remove the background, then change the person in the photo into a Disney/Pixar like cartoon character. " +
-  "Full body, standing in a relaxed A-pose with arms slightly away from the body, facing the camera, " +
-  "neutral friendly expression, even studio lighting, plain solid white background. " +
-  "Keep the person's real hairstyle, hair color, skin tone, body build and everyday clothing. " +
-  "No fantasy elements, no costumes, no props.";
+  "Transform the person in this photo into a 3D animated feature-film character, in the style of a modern " +
+  "Pixar / Disney CGI movie. The output must look like a polished 3D render: soft rounded forms, smooth " +
+  "subsurface-scattered skin, large expressive eyes, gently stylized friendly proportions, subtle warm smile. " +
+  "It must NOT look like a flat 2D illustration — no line art, no cel shading, no anime, no drawing. " +
+  "Keep the person's real hairstyle, hair color, skin tone, body build and everyday clothing so they stay " +
+  "clearly recognizable. Full body visible from head to toe, standing in a relaxed A-pose with arms slightly " +
+  "away from the body, facing the camera. Soft, even studio lighting, like a character turnaround render, on a " +
+  "plain seamless light neutral-gray studio background with nothing else in frame. " +
+  "No fantasy elements, no costumes, no props, no text.";
 
 function editPrompt(instruction) {
   return (
-    "This is a Disney/Pixar style cartoon character reference. Keep it the same person, in the same relaxed " +
-    "A-pose, facing the camera, with the same plain solid white background and even studio lighting. " +
+    "This is a 3D animated feature-film character render in a modern Pixar / Disney CGI style. Keep it the " +
+    "same person, the same polished 3D render style (never flat 2D illustration or line art), in the same " +
+    "relaxed A-pose, facing the camera, with the same plain seamless light neutral-gray studio background and " +
+    "soft even studio lighting. " +
     `Change ONLY: ${instruction}. ` +
     "Keep everything grounded and everyday — no fantasy elements, no costumes, no props, same person."
   );
