@@ -669,6 +669,9 @@ a {
   overflow: hidden;
   background: var(--surface-recessed);
   transition: background-color var(--motion-primary) ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-backdrop[data-backdrop="citrus"] {
@@ -1004,16 +1007,21 @@ a {
 /* 2D animated avatar (video clips) */
 .video-avatar {
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: 460px;
+  height: 520px;
+  max-width: 100%;
   display: block;
+  overflow: hidden;
+  /* Matches the sage backdrop baked into generated clips, so any letterbox
+     or load gap reads as part of the scene. */
+  background: #7d8b82;
 }
 
 .video-avatar video,
 .video-avatar img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 /* Stacked idle layers (crossfade loop) + reaction overlay */

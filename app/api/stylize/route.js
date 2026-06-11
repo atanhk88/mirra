@@ -6,6 +6,14 @@ export const runtime = "nodejs";
 // Image generation can take 10–20s, plus retries on capacity errors.
 export const maxDuration = 60;
 
+const SCENE =
+  "Scene composition: a plain muted sage-green studio backdrop filling the whole image. Standing upright on the " +
+  "floor behind the character is a large minimalist white rectangular border frame — thin, sharp, clean edges, " +
+  "like an empty picture frame — taller than the character. The character stands centered in front of the frame. " +
+  "The character casts a soft natural shadow on the floor, and the frame casts a subtle soft shadow onto the " +
+  "backdrop. Soft, even studio lighting. Generous empty margin around the frame on all sides; the full body and " +
+  "the entire frame are visible with nothing touching the image edges. Nothing else in frame.";
+
 const CREATE_PROMPT =
   "Transform the person in this photo into a 3D animated feature-film character, in the style of a modern " +
   "Pixar / Disney CGI movie. The output must look like a polished 3D render: soft rounded forms, smooth " +
@@ -13,17 +21,17 @@ const CREATE_PROMPT =
   "It must NOT look like a flat 2D illustration — no line art, no cel shading, no anime, no drawing. " +
   "Keep the person's real hairstyle, hair color, skin tone, body build and everyday clothing so they stay " +
   "clearly recognizable. Full body visible from head to toe, standing in a relaxed A-pose with arms slightly " +
-  "away from the body, facing the camera. Soft, even studio lighting, like a character turnaround render, on a " +
-  "plain seamless light neutral-gray studio background with nothing else in frame. " +
-  "No fantasy elements, no costumes, no props, no text.";
+  "away from the body, facing the camera. " +
+  SCENE +
+  " No fantasy elements, no costumes, no props, no text.";
 
 function editPrompt(instruction) {
   return (
     "This is a 3D animated feature-film character render in a modern Pixar / Disney CGI style. Keep it the " +
     "same person, the same polished 3D render style (never flat 2D illustration or line art), in the same " +
-    "relaxed A-pose, facing the camera, with the same plain seamless light neutral-gray studio background and " +
-    "soft even studio lighting. " +
-    `Change ONLY: ${instruction}. ` +
+    "relaxed A-pose, facing the camera, with the exact same scene: " +
+    SCENE +
+    ` Change ONLY: ${instruction}. ` +
     "Keep everything grounded and everyday — no fantasy elements, no costumes, no props, same person."
   );
 }
@@ -56,9 +64,14 @@ export async function POST(req) {
   const prompt = editInstruction ? editPrompt(editInstruction) : CREATE_PROMPT;
 
   // Gemini sheds load with 503 UNAVAILABLE during demand spikes; these are
-  // usually transient, so retry with backoff before giving up.
+  // usually transient, so retry with backoff before giving up. Square output
+  // (closest supported ratio to the 460×520 stage viewport) — dropped on a
+  // 400 in case the configured model doesn't accept imageConfig.
   let res;
+  let useAspect = true;
   for (let attempt = 0; ; attempt++) {
+    const generationConfig = { responseModalities: ["IMAGE", "TEXT"] };
+    if (useAspect) generationConfig.imageConfig = { aspectRatio: "1:1" };
     res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
@@ -70,10 +83,14 @@ export async function POST(req) {
               parts: [{ inlineData: { mimeType, data } }, { text: prompt }],
             },
           ],
-          generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
+          generationConfig,
         }),
       }
     );
+    if (res.status === 400 && useAspect) {
+      useAspect = false;
+      continue;
+    }
     if (res.status !== 503 && res.status !== 429) break;
     if (attempt >= 3) break;
     await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));

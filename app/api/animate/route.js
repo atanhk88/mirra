@@ -13,9 +13,12 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const STYLE =
-  "Completely static locked-off camera, no camera movement, no zoom, no pan, plain studio background. " +
-  "The entire body is fully visible from head to toe inside the frame — full body wide shot, " +
-  "feet on the ground, nothing cropped, the character stays the same size and in the same spot. " +
+  "Completely static locked-off camera, no camera movement, no zoom, no pan. " +
+  "The scene stays exactly as in the input image: a muted sage-green studio backdrop with a minimalist thin " +
+  "white rectangular border frame standing behind the character — the backdrop, the white frame, the lighting " +
+  "and the shadows never change or move; the character's soft shadow on the floor moves naturally with them. " +
+  "The entire body is fully visible from head to toe — full body wide shot, feet on the ground, nothing " +
+  "cropped, the character stays the same size and in the same spot. " +
   "Smooth high-quality 3D-animated movie character animation.";
 
 // Idle clips loop forever via a client-side crossfade, but a first/last frame
