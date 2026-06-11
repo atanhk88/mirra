@@ -13,21 +13,27 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const STYLE =
-  "Completely static camera, no camera movement, no zoom, plain studio background. " +
-  "Smooth 3D-animated movie quality character animation. The character stays in the same spot.";
+  "Completely static locked-off camera, no camera movement, no zoom, no pan, plain studio background. " +
+  "The entire body is fully visible from head to toe inside the frame — full body wide shot, " +
+  "feet on the ground, nothing cropped, the character stays the same size and in the same spot. " +
+  "Smooth high-quality 3D-animated movie character animation.";
+
+// Idle clips loop forever via a client-side crossfade, but a first/last frame
+// match keeps even the dissolve invisible.
+const LOOP = " The first and last frames are identical so the clip loops perfectly seamlessly with no jump or flash.";
 
 const MOTION_PROMPTS = {
   idle:
     "The character stands in place, breathing gently and visibly — chest and shoulders rise and fall softly. " +
     "They blink naturally every few seconds. Their feet stay planted and their posture barely changes; " +
     "any weight shift is barely perceptible. Calm, friendly, relaxed expression. " +
-    "The motion is minimal and continuous, suitable as a seamless idle loop, ending in the same relaxed standing pose as the start. " +
-    STYLE,
+    "The motion is minimal and continuous. " +
+    STYLE + LOOP,
   idle2:
     "The character stands in place, breathing gently — chest and shoulders rise and fall softly, blinking naturally. " +
     "Once, they glance briefly to one side with mild curiosity and give a soft small smile, then look forward again. " +
-    "Feet stay planted, posture barely changes. The clip starts and ends in the same relaxed standing pose. " +
-    STYLE,
+    "Feet stay planted, posture barely changes. " +
+    STYLE + LOOP,
   celebrate:
     "The character bursts into celebration — throws both arms up, jumps joyfully with a huge smile, " +
     "then settles back down into a relaxed standing pose. " + STYLE,
@@ -118,9 +124,11 @@ export async function POST(req) {
   const mime = body.mime === "image/jpeg" ? "image/jpeg" : "image/png";
   const input = { image: `data:${mime};base64,${body.image}`, prompt };
   // Seedance-specific knobs; other models get the universal image+prompt pair.
+  // Duration/resolution are env-overridable so a longer-clip model can be
+  // swapped in without code changes (Seedance Lite itself caps at 10s).
   if (model.includes("seedance")) {
-    input.duration = 5;
-    input.resolution = "480p";
+    input.duration = Number(process.env.REPLICATE_VIDEO_DURATION) || 10;
+    input.resolution = process.env.REPLICATE_VIDEO_RESOLUTION || "720p";
     input.camera_fixed = true;
   }
 

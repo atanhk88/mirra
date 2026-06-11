@@ -21,7 +21,9 @@ Deployable to Vercel as-is (`next build`).
 | `GEMINI_API_KEY` | Google Gemini API key for photo → cartoon stylization |
 | `GEMINI_IMAGE_MODEL` | Gemini image model id (default `gemini-3.5-flash`; must support image output) |
 | `REPLICATE_API_TOKEN` | Replicate token — generates the animation clips |
-| `REPLICATE_VIDEO_MODEL` | Image-to-video model (default `bytedance/seedance-1-lite`, ~$0.02/s ≈ $0.10 per 5 s clip) |
+| `REPLICATE_VIDEO_MODEL` | Image-to-video model (default `bytedance/seedance-1-lite`, ~$0.02/s) |
+| `REPLICATE_VIDEO_DURATION` | Clip length in seconds (default `10`; Seedance Lite supports 5 or 10) |
+| `REPLICATE_VIDEO_RESOLUTION` | Clip resolution (default `720p`; Seedance also supports `480p`) |
 
 Without keys the app still demos: a CSS-filter stand-in replaces Gemini stylization and the stage
 shows the static reference with a setup note. Keys only ever live server-side.

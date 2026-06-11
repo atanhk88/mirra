@@ -17,6 +17,81 @@ import { useEffect, useRef, useState } from "react";
 import { onReaction, REACTIONS, REACTION_LABELS } from "@/lib/reactions";
 import { saveClip } from "@/lib/library";
 
+const CROSSFADE = 0.7; // seconds of opacity dissolve across the loop boundary
+
+// Seamless idle: two stacked <video> layers. As the playing layer nears its
+// end, the other starts from frame 0 and we crossfade opacity, dissolving over
+// the loop seam so there's no flash. Each cycle advances through the idle
+// variants, so the same dissolve also masks the variant switch.
+function IdleLoop({ urls }) {
+  const refs = [useRef(null), useRef(null)];
+  const [active, setActive] = useState(0);
+  const st = useRef({ active: 0, idx: 0, busy: false }).current;
+
+  useEffect(() => {
+    st.active = 0;
+    st.idx = 0;
+    st.busy = false;
+    setActive(0);
+    const a = refs[0].current;
+    const b = refs[1].current;
+    if (a) {
+      a.src = urls[0];
+      a.currentTime = 0;
+      a.play().catch(() => {});
+    }
+    if (b) {
+      b.src = urls[1 % urls.length];
+      b.load();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urls.join("|")]);
+
+  function onTimeUpdate(layer) {
+    return (e) => {
+      const v = e.target;
+      if (layer !== st.active || st.busy || !v.duration) return;
+      if (v.duration - v.currentTime > CROSSFADE) return;
+      st.busy = true;
+      const other = 1 - st.active;
+      const ov = refs[other].current;
+      const nextIdx = (st.idx + 1) % urls.length;
+      if (ov.src !== urls[nextIdx]) ov.src = urls[nextIdx];
+      ov.currentTime = 0;
+      ov.play().catch(() => {});
+      st.active = other;
+      st.idx = nextIdx;
+      setActive(other);
+      // After the dissolve, preload the following variant on the now-idle layer.
+      setTimeout(() => {
+        st.busy = false;
+        const inactive = refs[1 - st.active].current;
+        const following = urls[(st.idx + 1) % urls.length];
+        if (inactive && inactive.src !== following) {
+          inactive.src = following;
+          inactive.load();
+        }
+      }, CROSSFADE * 1000);
+    };
+  }
+
+  return (
+    <>
+      {[0, 1].map((layer) => (
+        <video
+          key={layer}
+          ref={refs[layer]}
+          className="idle-layer"
+          style={{ opacity: active === layer ? 1 : 0, transition: `opacity ${CROSSFADE}s linear` }}
+          muted
+          playsInline
+          onTimeUpdate={onTimeUpdate(layer)}
+        />
+      ))}
+    </>
+  );
+}
+
 const POLL_MS = 5000;
 const IDLES = ["idle", "idle2"];
 const AUTO_QUEUE = ["idle2", ...REACTIONS];
@@ -49,7 +124,6 @@ function prepareImage(dataUrl) {
 export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
   const [clips, setClips] = useState(initialClips);
   const [activeReaction, setActiveReaction] = useState(null);
-  const [idleIdx, setIdleIdx] = useState(0);
   const [error, setError] = useState(null);
   const [waitingFor, setWaitingFor] = useState(null);
   const [generating, setGenerating] = useState(null);
@@ -148,33 +222,13 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
   }, [image]);
 
   const idleUrls = IDLES.map((m) => clips[m]).filter(Boolean);
-  const idleUrl = idleUrls.length ? idleUrls[idleIdx % idleUrls.length] : null;
-
-  function handleIdleEnded(e) {
-    if (idleUrls.length > 1) setIdleIdx((i) => i + 1);
-    else {
-      e.target.currentTime = 0;
-      e.target.play();
-    }
-  }
-
   const readyCount = AUTO_QUEUE.filter((m) => clips[m]).length;
   const queuePct = Math.round((readyCount / AUTO_QUEUE.length) * 100);
 
   return (
     <div className="video-avatar">
-      {activeReaction ? (
-        <video
-          key={activeReaction.motion + activeReaction.url}
-          src={activeReaction.url}
-          autoPlay
-          muted
-          playsInline
-          onEnded={() => setActiveReaction(null)}
-          onError={() => setActiveReaction(null)}
-        />
-      ) : idleUrl ? (
-        <video key={idleIdx + idleUrl} src={idleUrl} autoPlay muted playsInline onEnded={handleIdleEnded} />
+      {idleUrls.length > 0 ? (
+        <IdleLoop urls={idleUrls} />
       ) : (
         <>
           <img src={image} alt="Stylized avatar" />
@@ -190,6 +244,21 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
         </>
       )}
 
+      {/* Reaction plays on top; idle keeps looping underneath and resumes
+          seamlessly when the reaction ends. */}
+      {activeReaction && (
+        <video
+          key={activeReaction.motion + activeReaction.url}
+          className="reaction-layer"
+          src={activeReaction.url}
+          autoPlay
+          muted
+          playsInline
+          onEnded={() => setActiveReaction(null)}
+          onError={() => setActiveReaction(null)}
+        />
+      )}
+
       {error ? (
         <div className="video-avatar-note">{error}</div>
       ) : waitingFor ? (
@@ -197,7 +266,7 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
           <span className="spinner" aria-hidden="true" />
           Animating “{REACTION_LABELS[waitingFor] || waitingFor}” — it plays the moment it’s ready…
         </div>
-      ) : generating && idleUrl ? (
+      ) : generating && idleUrls.length > 0 ? (
         <div className="video-avatar-note video-avatar-note--quiet">
           Animating “{REACTION_LABELS[generating] || generating}” in the background ({readyCount}/{AUTO_QUEUE.length})
           <div

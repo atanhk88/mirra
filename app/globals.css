@@ -1016,6 +1016,17 @@ a {
   object-fit: contain;
 }
 
+/* Stacked idle layers (crossfade loop) + reaction overlay */
+.video-avatar .idle-layer,
+.video-avatar .reaction-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.video-avatar .reaction-layer {
+  z-index: 2;
+}
+
 .video-avatar-overlay,
 .video-avatar-note {
   position: absolute;
