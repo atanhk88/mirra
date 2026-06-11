@@ -18,7 +18,7 @@ export default function GeneratePanel({ stylized, stylizedIsMock, gen, onStart, 
     <div className="generate-grid">
       <div className="card">
         <h3 className="card-title">Reference</h3>
-        <p className="card-sub">This stylized image is what Hunyuan3D sculpts and textures.</p>
+        <p className="card-sub">This stylized image is what the 3D backend sculpts and textures.</p>
         <div className="preview-frame">
           {stylized ? (
             <img src={stylized} alt="Stylized reference" className={stylizedIsMock ? "mock-stylized" : undefined} />
@@ -33,7 +33,7 @@ export default function GeneratePanel({ stylized, stylizedIsMock, gen, onStart, 
         <p className="card-sub">
           {mockMode
             ? "No 3D backend configured — this simulates the pipeline and hands you the mock avatar."
-            : "Hunyuan3D sculpts and textures the mesh. Expect roughly 1–3 minutes of GPU time."}
+            : "The 3D backend sculpts and textures the mesh. Expect roughly 1–3 minutes of GPU time."}
         </p>
 
         <div className="progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>

@@ -24,15 +24,18 @@ Deployable to Vercel as-is (`next build`).
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API key for photo → cartoon stylization |
 | `GEMINI_IMAGE_MODEL` | Gemini image model id (default `gemini-3.5-flash`; must support image output) |
-| `REPLICATE_API_TOKEN` | Replicate token — hosted Hunyuan3D, the no-GPU path (~$0.1/generation) |
+| `MESHY_API_KEY` | Meshy hosted image-to-3D — character-focused, free monthly credit tier |
+| `MESHY_AI_MODEL` | Meshy model generation (default `meshy-5`) |
+| `REPLICATE_API_TOKEN` | Replicate token — hosted Hunyuan3D (~$0.1/generation) |
 | `REPLICATE_MODEL` | Replicate model (default `ndreca/hunyuan3d-2`, which returns a textured mesh) |
 | `HUNYUAN_SERVER_URL` | Base URL of a self-hosted Hunyuan3D worker (see [docs/HUNYUAN_SETUP.md](docs/HUNYUAN_SETUP.md)) |
 
-For 3D generation, set **either** `REPLICATE_API_TOKEN` (hosted, zero ops) **or**
-`HUNYUAN_SERVER_URL` (self-hosted/Colab, free). A worker URL — env or the per-session "Worker URL
-override" field in step 1 (sent as an `x-worker-url` header, never stored) — takes priority over
-Replicate. Keys only ever live server-side. With Replicate, the finished GLB is downloaded by the
-browser directly from `replicate.delivery`, sidestepping serverless response-size limits.
+For 3D generation, set **one of** `MESHY_API_KEY` (hosted, best avatar quality), `REPLICATE_API_TOKEN`
+(hosted Hunyuan3D), or `HUNYUAN_SERVER_URL` (self-hosted/Colab, free). Priority when several are set:
+worker URL override (per-session field in step 1, sent as an `x-worker-url` header, never stored) →
+`HUNYUAN_SERVER_URL` → Meshy → Replicate. Keys only ever live server-side. With hosted providers the
+browser downloads the finished GLB straight from the provider's CDN (with a same-origin proxy
+fallback), sidestepping serverless response-size limits.
 
 ## The pipeline
 

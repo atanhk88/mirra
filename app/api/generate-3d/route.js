@@ -1,8 +1,10 @@
-// 3D generation backend. Two interchangeable providers:
+// 3D generation backend. Three interchangeable providers, in priority order:
 //
 //   1. Self-hosted Hunyuan3D api_server.py worker (HUNYUAN_SERVER_URL or a
 //      per-request x-worker-url header — Colab tunnel URLs rotate).
-//   2. Replicate-hosted Hunyuan3D (REPLICATE_API_TOKEN; model overridable via
+//   2. Meshy hosted API (MESHY_API_KEY) — character-focused image-to-3D with
+//      a free monthly credit tier.
+//   3. Replicate-hosted Hunyuan3D (REPLICATE_API_TOKEN; model overridable via
 //      REPLICATE_MODEL, default ndreca/hunyuan3d-2 which produces a textured
 //      mesh — the official tencent/hunyuan3d-2 returns an untextured gray
 //      mesh).
@@ -24,6 +26,11 @@ export const maxDuration = 60;
 
 const REPLICATE_API = "https://api.replicate.com/v1";
 const REPLICATE_TASK_PREFIX = "replicate:";
+const MESHY_API = "https://api.meshy.ai/openapi/v1/image-to-3d";
+const MESHY_TASK_PREFIX = "meshy:";
+
+// Hosts the download proxy is allowed to fetch finished models from.
+const PROXY_HOSTS = [/(^|\.)replicate\.delivery$/, /(^|\.)meshy\.ai$/];
 
 function resolveBackend(req) {
   const override = req?.headers.get("x-worker-url");
@@ -32,6 +39,9 @@ function resolveBackend(req) {
   }
   if (process.env.HUNYUAN_SERVER_URL) {
     return { type: "worker", url: process.env.HUNYUAN_SERVER_URL.trim().replace(/\/$/, "") };
+  }
+  if (process.env.MESHY_API_KEY) {
+    return { type: "meshy", key: process.env.MESHY_API_KEY };
   }
   if (process.env.REPLICATE_API_TOKEN) {
     return {
@@ -103,9 +113,68 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const task = searchParams.get("task");
 
+  // Download proxy for finished models, used by the client only when the
+  // provider's CDN refuses cross-origin fetches. Restricted to known hosts.
+  const proxy = searchParams.get("proxy");
+  if (proxy) {
+    let host;
+    try {
+      host = new URL(proxy).hostname;
+    } catch {
+      return Response.json({ error: "Invalid proxy URL." }, { status: 400 });
+    }
+    if (!PROXY_HOSTS.some((re) => re.test(host))) {
+      return Response.json({ error: "Host not allowed." }, { status: 400 });
+    }
+    let res;
+    try {
+      res = await fetch(proxy);
+    } catch (err) {
+      return Response.json({ error: `Download failed: ${err.message}` }, { status: 502 });
+    }
+    if (!res.ok) {
+      return Response.json({ error: `Download failed (${res.status}).` }, { status: 502 });
+    }
+    return new Response(res.body, {
+      headers: { "content-type": "model/gltf-binary", "cache-control": "no-store" },
+    });
+  }
+
   if (!task) {
     const backend = resolveBackend(req);
     return Response.json({ configured: !!backend, backend: backend?.type || null });
+  }
+
+  if (task.startsWith(MESHY_TASK_PREFIX)) {
+    const key = process.env.MESHY_API_KEY;
+    if (!key) {
+      return Response.json({ error: "MESHY_API_KEY is not configured." }, { status: 503 });
+    }
+    const id = task.slice(MESHY_TASK_PREFIX.length);
+    let res;
+    try {
+      res = await fetch(`${MESHY_API}/${encodeURIComponent(id)}`, {
+        headers: { authorization: `Bearer ${key}` },
+        cache: "no-store",
+      });
+    } catch (err) {
+      return Response.json({ error: `Meshy unreachable: ${err.message}` }, { status: 502 });
+    }
+    if (!res.ok) {
+      return Response.json({ error: `Meshy status check failed (${res.status}).` }, { status: 502 });
+    }
+    const json = await res.json();
+    if (json.status === "SUCCEEDED") {
+      const modelUrl = json.model_urls?.glb;
+      if (!modelUrl) {
+        return Response.json({ status: "error", message: "Meshy finished but returned no GLB URL." });
+      }
+      return Response.json({ status: "completed", modelUrl });
+    }
+    if (json.status === "FAILED" || json.status === "CANCELED") {
+      return Response.json({ status: "error", message: json.task_error?.message || `Task ${json.status.toLowerCase()}.` });
+    }
+    return Response.json({ status: "processing", progress: json.progress ?? null });
   }
 
   if (task.startsWith(REPLICATE_TASK_PREFIX)) {
@@ -191,6 +260,41 @@ export async function POST(req) {
 
   if (!body?.image) {
     return Response.json({ error: "Missing base64 `image`." }, { status: 400 });
+  }
+
+  if (backend.type === "meshy") {
+    const headers = { authorization: `Bearer ${backend.key}`, "content-type": "application/json" };
+    const payload = {
+      image_url: `data:image/png;base64,${body.image}`,
+      ai_model: process.env.MESHY_AI_MODEL || "meshy-5",
+      should_texture: true,
+      enable_pbr: false,
+      // A-pose meshes read much better under the puppet animation layer.
+      pose_mode: "a-pose",
+      target_formats: ["glb"],
+      target_polycount: 30000,
+    };
+    let res;
+    try {
+      res = await fetch(MESHY_API, { method: "POST", headers, body: JSON.stringify(payload) });
+      // Optional knobs vary by plan/model generation — retry bare-bones
+      // rather than failing the run on a validation nitpick.
+      if (res.status === 400 || res.status === 422) {
+        res = await fetch(MESHY_API, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ image_url: payload.image_url }),
+        });
+      }
+    } catch (err) {
+      return Response.json({ error: `Meshy unreachable: ${err.message}` }, { status: 502 });
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.result) {
+      const detail = json.message || JSON.stringify(json).slice(0, 300);
+      return Response.json({ error: `Meshy rejected the job (${res.status}). ${detail}` }, { status: 502 });
+    }
+    return Response.json({ taskId: `${MESHY_TASK_PREFIX}${json.result}` });
   }
 
   if (backend.type === "replicate") {

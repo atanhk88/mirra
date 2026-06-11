@@ -137,11 +137,13 @@ export default function UploadPanel({
             <span className={workerOn ? "status-on" : "status-off"}>
               {workerOverride.trim()
                 ? "✓ worker override"
-                : pipeline.backend === "replicate"
-                  ? "✓ Replicate (hosted)"
-                  : pipeline.worker
-                    ? "✓ Hunyuan3D worker"
-                    : "— mock mode"}
+                : pipeline.backend === "meshy"
+                  ? "✓ Meshy (hosted)"
+                  : pipeline.backend === "replicate"
+                    ? "✓ Replicate (hosted)"
+                    : pipeline.worker
+                      ? "✓ Hunyuan3D worker"
+                      : "— mock mode"}
             </span>
           </span>
         </div>
