@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { REACTIONS, REACTION_LABELS, triggerReaction } from "@/lib/reactions";
+import { triggerReaction } from "@/lib/reactions";
 
 export default function AchievementPanel() {
   const [items, setItems] = useState([]);
@@ -54,16 +54,6 @@ export default function AchievementPanel() {
         </ul>
       )}
 
-      <div className="option-group">
-        <span className="option-label">Tune reactions</span>
-        <div className="reaction-row">
-          {REACTIONS.map((name) => (
-            <button key={name} type="button" className="btn-small" onClick={() => triggerReaction(name)}>
-              {REACTION_LABELS[name]}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

@@ -29,7 +29,7 @@ export default function UploadPanel({
   stylizedIsMock,
   stylizeError,
   pipeline,
-  onAnimate,
+  onNext,
   onRetry,
 }) {
   const inputRef = useRef();
@@ -109,8 +109,8 @@ export default function UploadPanel({
         {stylized && !stylizing && (
           <div className="panel-actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--spacing-8)" }}>
             <div style={{ display: "flex", gap: "var(--spacing-8)", flexWrap: "wrap" }}>
-              <button type="button" className="btn-primary" onClick={onAnimate} disabled={!pipeline.video}>
-                Animate me →
+              <button type="button" className="btn-primary" onClick={onNext}>
+                Next: Customize →
               </button>
               {pipeline.gemini && stylizedIsMock && (
                 <button type="button" className="btn-small" onClick={onRetry}>
@@ -119,9 +119,7 @@ export default function UploadPanel({
               )}
             </div>
             <p className="card-sub" style={{ margin: 0 }}>
-              {pipeline.video
-                ? "Real motion clips (breathing, blinking, reactions) are generated from your reference — about a minute each and ~$0.10 per clip on your Replicate account. Everything is cached to your local library."
-                : "Add REPLICATE_API_TOKEN to your deployment to enable animation."}
+              Customize the look before animating, or skip straight to animation.
             </p>
           </div>
         )}

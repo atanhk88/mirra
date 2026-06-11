@@ -2,14 +2,14 @@
 
 import VideoAvatar from "./VideoAvatar";
 
-export default function StageCard({ stylized, avatarId, initialClips, animConfigured }) {
+export default function StageCard({ stylized, clips = {}, animConfigured }) {
   return (
     <div className="stage-card">
       <h3 className="card-title">Your avatar</h3>
       <p className="card-sub">It breathes and blinks on its own — reactions fire from the panels on the right.</p>
       <div className="stage-backdrop" data-backdrop="fog">
         {stylized && animConfigured ? (
-          <VideoAvatar key={avatarId || stylized} image={stylized} avatarId={avatarId} initialClips={initialClips} />
+          <VideoAvatar image={stylized} clips={clips} />
         ) : stylized ? (
           <div className="video-avatar">
             <img src={stylized} alt="Stylized avatar" />
