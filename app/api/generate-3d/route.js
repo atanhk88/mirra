@@ -1,24 +1,83 @@
-// Proxy for a self-hosted Hunyuan3D api_server.py worker.
+// 3D generation backend. Two interchangeable providers:
 //
-//   POST { image: <base64> }      → { taskId }
-//   GET  ?task=<id>               → JSON status while pending,
-//                                   the finished GLB (model/gltf-binary) when done
-//   GET  (no params)              → { configured } for the UI status line
+//   1. Self-hosted Hunyuan3D api_server.py worker (HUNYUAN_SERVER_URL or a
+//      per-request x-worker-url header — Colab tunnel URLs rotate).
+//   2. Replicate-hosted Hunyuan3D (REPLICATE_API_TOKEN; model overridable via
+//      REPLICATE_MODEL, default ndreca/hunyuan3d-2 which produces a textured
+//      mesh — the official tencent/hunyuan3d-2 returns an untextured gray
+//      mesh).
 //
-// Worker URL comes from HUNYUAN_SERVER_URL, overridable per request via an
-// x-worker-url header (Colab tunnel URLs change every session). The proxy is
-// stateless — the worker owns all task state, so this runs fine serverless.
+// A worker override or env URL wins over Replicate, so a local GPU can always
+// be plugged in without touching the deployment.
 //
-// Note: streaming a 20–40 MB GLB through a Vercel serverless function can hit
-// response-size limits; production should push the GLB to blob storage instead
-// (see README).
+//   POST { image: <base64> }  → { taskId }
+//   GET  ?task=<id>           → JSON status while pending; when finished either
+//                               streams the GLB (worker) or returns
+//                               { status: "completed", modelUrl } (Replicate —
+//                               the client downloads straight from
+//                               replicate.delivery, avoiding serverless
+//                               response-size limits).
+//   GET  (no params)          → { configured, backend } for the UI status line
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
-function workerUrl(req) {
-  const override = req.headers.get("x-worker-url");
-  const url = (override || process.env.HUNYUAN_SERVER_URL || "").trim().replace(/\/$/, "");
-  return url || null;
+const REPLICATE_API = "https://api.replicate.com/v1";
+const REPLICATE_TASK_PREFIX = "replicate:";
+
+function resolveBackend(req) {
+  const override = req?.headers.get("x-worker-url");
+  if (override && override.trim()) {
+    return { type: "worker", url: override.trim().replace(/\/$/, "") };
+  }
+  if (process.env.HUNYUAN_SERVER_URL) {
+    return { type: "worker", url: process.env.HUNYUAN_SERVER_URL.trim().replace(/\/$/, "") };
+  }
+  if (process.env.REPLICATE_API_TOKEN) {
+    return {
+      type: "replicate",
+      token: process.env.REPLICATE_API_TOKEN,
+      model: process.env.REPLICATE_MODEL || "ndreca/hunyuan3d-2",
+    };
+  }
+  return null;
+}
+
+// Replicate model outputs vary by deployment: a bare URL string, an array,
+// or an object keyed mesh / textured_mesh / model / glb. Prefer textured.
+function pickMeshUrl(output) {
+  if (!output) return null;
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) return output.find((v) => typeof v === "string") || null;
+  if (typeof output === "object") {
+    for (const key of ["textured_mesh", "mesh", "model", "glb"]) {
+      if (typeof output[key] === "string") return output[key];
+    }
+    return Object.values(output).find((v) => typeof v === "string") || null;
+  }
+  return null;
+}
+
+async function replicateUploadImage(token, base64) {
+  const buf = Buffer.from(base64, "base64");
+  // Data URLs are only accepted for small payloads; upload via the files API
+  // and fall back to a data URL if that fails.
+  try {
+    const form = new FormData();
+    form.append("content", new Blob([buf], { type: "image/png" }), "reference.png");
+    const res = await fetch(`${REPLICATE_API}/files`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.urls?.get) return json.urls.get;
+    }
+  } catch {
+    // fall through to data URL
+  }
+  return `data:image/png;base64,${base64}`;
 }
 
 export async function GET(req) {
@@ -26,17 +85,51 @@ export async function GET(req) {
   const task = searchParams.get("task");
 
   if (!task) {
-    return Response.json({ configured: !!process.env.HUNYUAN_SERVER_URL });
+    const backend = resolveBackend(req);
+    return Response.json({ configured: !!backend, backend: backend?.type || null });
   }
 
-  const worker = workerUrl(req);
-  if (!worker) {
+  if (task.startsWith(REPLICATE_TASK_PREFIX)) {
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) {
+      return Response.json({ error: "REPLICATE_API_TOKEN is not configured." }, { status: 503 });
+    }
+    const id = task.slice(REPLICATE_TASK_PREFIX.length);
+    let res;
+    try {
+      res = await fetch(`${REPLICATE_API}/predictions/${encodeURIComponent(id)}`, {
+        headers: { authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+    } catch (err) {
+      return Response.json({ error: `Replicate unreachable: ${err.message}` }, { status: 502 });
+    }
+    if (!res.ok) {
+      return Response.json({ error: `Replicate status check failed (${res.status}).` }, { status: 502 });
+    }
+    const json = await res.json();
+    if (json.status === "succeeded") {
+      const modelUrl = pickMeshUrl(json.output);
+      if (!modelUrl) {
+        return Response.json({ status: "error", message: "Replicate finished but returned no mesh URL." });
+      }
+      return Response.json({ status: "completed", modelUrl });
+    }
+    if (json.status === "failed" || json.status === "canceled") {
+      return Response.json({ status: "error", message: String(json.error || `Prediction ${json.status}.`) });
+    }
+    return Response.json({ status: "processing" });
+  }
+
+  // Self-hosted worker task
+  const backend = resolveBackend(req);
+  if (!backend || backend.type !== "worker") {
     return Response.json({ error: "No Hunyuan3D worker configured." }, { status: 503 });
   }
 
   let res;
   try {
-    res = await fetch(`${worker}/status/${encodeURIComponent(task)}`, { cache: "no-store" });
+    res = await fetch(`${backend.url}/status/${encodeURIComponent(task)}`, { cache: "no-store" });
   } catch (err) {
     return Response.json({ error: `Worker unreachable: ${err.message}` }, { status: 502 });
   }
@@ -62,9 +155,12 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const worker = workerUrl(req);
-  if (!worker) {
-    return Response.json({ error: "No Hunyuan3D worker configured — set HUNYUAN_SERVER_URL or paste a worker URL." }, { status: 503 });
+  const backend = resolveBackend(req);
+  if (!backend) {
+    return Response.json(
+      { error: "No 3D backend configured — set REPLICATE_API_TOKEN or HUNYUAN_SERVER_URL, or paste a worker URL." },
+      { status: 503 }
+    );
   }
 
   let body;
@@ -78,9 +174,29 @@ export async function POST(req) {
     return Response.json({ error: "Missing base64 `image`." }, { status: 400 });
   }
 
+  if (backend.type === "replicate") {
+    const imageUrl = await replicateUploadImage(backend.token, body.image);
+    let res;
+    try {
+      res = await fetch(`${REPLICATE_API}/models/${backend.model}/predictions`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${backend.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ input: { image: imageUrl } }),
+      });
+    } catch (err) {
+      return Response.json({ error: `Replicate unreachable: ${err.message}` }, { status: 502 });
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.id) {
+      const detail = json.detail || json.title || JSON.stringify(json).slice(0, 300);
+      return Response.json({ error: `Replicate rejected the job (${res.status}). ${detail}` }, { status: 502 });
+    }
+    return Response.json({ taskId: `${REPLICATE_TASK_PREFIX}${json.id}` });
+  }
+
   let res;
   try {
-    res = await fetch(`${worker}/send`, {
+    res = await fetch(`${backend.url}/send`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ image: body.image, texture: true }),

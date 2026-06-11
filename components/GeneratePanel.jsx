@@ -32,8 +32,8 @@ export default function GeneratePanel({ stylized, stylizedIsMock, gen, onStart, 
         <h3 className="card-title">Generate 3D avatar</h3>
         <p className="card-sub">
           {mockMode
-            ? "No worker configured — this simulates the pipeline and hands you the mock avatar."
-            : "Sculpting and texturing run on your Hunyuan3D worker. Expect 30–120 seconds of GPU time."}
+            ? "No 3D backend configured — this simulates the pipeline and hands you the mock avatar."
+            : "Hunyuan3D sculpts and textures the mesh. Expect roughly 1–3 minutes of GPU time."}
         </p>
 
         <div className="progress-track" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>

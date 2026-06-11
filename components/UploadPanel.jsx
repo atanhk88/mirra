@@ -133,8 +133,16 @@ export default function UploadPanel({
             <span className={pipeline.gemini ? "status-on" : "status-off"}>{pipeline.gemini ? "✓ configured" : "— mock mode"}</span>
           </span>
           <span className="status-chip">
-            Hunyuan3D worker{" "}
-            <span className={workerOn ? "status-on" : "status-off"}>{workerOn ? "✓ reachable" : "— mock mode"}</span>
+            3D generation{" "}
+            <span className={workerOn ? "status-on" : "status-off"}>
+              {workerOverride.trim()
+                ? "✓ worker override"
+                : pipeline.backend === "replicate"
+                  ? "✓ Replicate (hosted)"
+                  : pipeline.worker
+                    ? "✓ Hunyuan3D worker"
+                    : "— mock mode"}
+            </span>
           </span>
         </div>
         <div className="field-row">
