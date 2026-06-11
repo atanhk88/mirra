@@ -1,26 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import UploadPanel from "@/components/UploadPanel";
-import GeneratePanel from "@/components/GeneratePanel";
 import StageCard from "@/components/StageCard";
 import AchievementPanel from "@/components/AchievementPanel";
 import CustomizePanel from "@/components/CustomizePanel";
-import RigPanel from "@/components/RigPanel";
 import { DEFAULT_OPTIONS, buildEditInstruction } from "@/lib/customize";
+import { saveAvatar, getAvatar, ACTIVE_AVATAR_KEY } from "@/lib/library";
 
 const STEPS = [
   { id: 1, label: "Photo" },
-  { id: 2, label: "Generate" },
-  { id: 3, label: "Your avatar" },
+  { id: 2, label: "Your avatar" },
 ];
-
-const POLL_MS = 4000;
 
 export default function Home() {
   const [step, setStep] = useState(1);
-  const [pipeline, setPipeline] = useState({ gemini: false, worker: false, backend: null });
-  const [workerOverride, setWorkerOverride] = useState("");
+  const [pipeline, setPipeline] = useState({ gemini: false, video: false });
 
   const [photo, setPhoto] = useState(null);
   const [stylized, setStylized] = useState(null);
@@ -28,40 +23,39 @@ export default function Home() {
   const [stylizedIsMock, setStylizedIsMock] = useState(false);
   const [stylizeError, setStylizeError] = useState(null);
 
-  const [anim2d, setAnim2d] = useState(false);
-
-  const [gen, setGen] = useState({ state: "idle" });
-  const [modelUrl, setModelUrl] = useState(null);
-  const [objUrl, setObjUrl] = useState(null);
-  const [rigged, setRigged] = useState(null);
+  const [avatarId, setAvatarId] = useState(null);
+  const [initialClips, setInitialClips] = useState({});
   const [options, setOptions] = useState(DEFAULT_OPTIONS);
   const [applying, setApplying] = useState(false);
-
-  const pollRef = useRef(null);
-  const mockTimers = useRef([]);
 
   useEffect(() => {
     fetch("/api/stylize")
       .then((r) => r.json())
       .then((j) => setPipeline((p) => ({ ...p, gemini: !!j.configured })))
       .catch(() => {});
-    fetch("/api/generate-3d")
-      .then((r) => r.json())
-      .then((j) => setPipeline((p) => ({ ...p, worker: !!j.configured, backend: j.backend || null })))
-      .catch(() => {});
     fetch("/api/animate")
       .then((r) => r.json())
       .then((j) => setPipeline((p) => ({ ...p, video: !!j.configured })))
       .catch(() => {});
-    return () => stopGeneration();
-  }, []);
 
-  function stopGeneration() {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
-    mockTimers.current.forEach(clearTimeout);
-    mockTimers.current = [];
-  }
+    // Resume the avatar last opened from the library.
+    const activeId = localStorage.getItem(ACTIVE_AVATAR_KEY);
+    if (activeId) {
+      getAvatar(activeId)
+        .then((record) => {
+          if (!record) return;
+          const clips = {};
+          for (const [motion, blob] of Object.entries(record.clips || {})) {
+            clips[motion] = URL.createObjectURL(blob);
+          }
+          setStylized(record.image);
+          setAvatarId(record.id);
+          setInitialClips(clips);
+          setStep(2);
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   async function stylize(imageDataUrl, editInstruction) {
     setStylizing(true);
@@ -90,116 +84,42 @@ export default function Home() {
 
   function handlePhoto(dataUrl) {
     setPhoto(dataUrl);
-    setModelUrl(null);
-    setRigged(null);
-    setAnim2d(false);
+    setAvatarId(null);
+    setInitialClips({});
+    localStorage.removeItem(ACTIVE_AVATAR_KEY);
     stylize(dataUrl);
   }
 
-  function startMockGeneration() {
-    setGen({ state: "sending", detail: "Mock mode — simulating the worker." });
-    mockTimers.current = [
-      setTimeout(() => setGen({ state: "processing", detail: "Mock mode — simulating the worker." }), 1200),
-      setTimeout(() => setGen({ state: "texturing", detail: "Mock mode — simulating the worker." }), 4200),
-      setTimeout(() => {
-        setGen({ state: "done", detail: "Mock mode — the procedural avatar stands in for a generated mesh." });
-        setStep(3);
-      }, 6800),
-    ];
-  }
-
-  async function startGeneration(imageDataUrl = stylized) {
+  // Creates a library record for the current stylized reference and enters
+  // the stage — VideoAvatar generates clips and persists them to the record.
+  async function animate(imageDataUrl = stylized) {
     if (!imageDataUrl) return;
-    stopGeneration();
-    setModelUrl(null);
-    setRigged(null);
-
-    const realWorker = pipeline.worker || workerOverride.trim();
-    if (!realWorker) {
-      startMockGeneration();
-      return;
-    }
-
-    const headers = { "content-type": "application/json" };
-    if (workerOverride.trim()) headers["x-worker-url"] = workerOverride.trim();
-
+    const id = crypto.randomUUID();
     try {
-      setGen({ state: "sending" });
-      const res = await fetch("/api/generate-3d", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ image: imageDataUrl.split(",")[1] }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `Worker rejected the job (${res.status})`);
-      const taskId = json.taskId;
-      setGen({ state: "processing", detail: `Task ${taskId}` });
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const pollHeaders = workerOverride.trim() ? { "x-worker-url": workerOverride.trim() } : undefined;
-          const poll = await fetch(`/api/generate-3d?task=${encodeURIComponent(taskId)}`, { headers: pollHeaders });
-          const type = poll.headers.get("content-type") || "";
-          if (type.includes("model/gltf-binary")) {
-            const blob = await poll.blob();
-            stopGeneration();
-            setModelUrl(URL.createObjectURL(blob));
-            setGen({ state: "done", detail: "Textured GLB streamed from the worker." });
-            setStep(3);
-            return;
-          }
-          const status = await poll.json();
-          if (status.status === "completed" && status.modelUrl) {
-            // Hosted backend: the GLB lives on the provider's CDN — download
-            // it client-side to dodge serverless response-size limits.
-            stopGeneration();
-            setGen({ state: "texturing", detail: "Downloading model…" });
-            // Some provider CDNs refuse cross-origin fetches — fall back to
-            // proxying the download through our API.
-            let glb = await fetch(status.modelUrl).catch(() => null);
-            if (!glb || !glb.ok) {
-              glb = await fetch(`/api/generate-3d?proxy=${encodeURIComponent(status.modelUrl)}`);
-            }
-            if (!glb.ok) throw new Error(`Model download failed (${glb.status}).`);
-            const blob = await glb.blob();
-            setModelUrl(URL.createObjectURL(blob));
-            if (status.objUrl) setObjUrl(status.objUrl);
-            setGen({ state: "done", detail: "Textured GLB generated by the hosted backend." });
-            setStep(3);
-          } else if (status.status === "texturing") setGen({ state: "texturing", detail: `Task ${taskId}` });
-          else if (status.status === "processing" && status.progress != null)
-            setGen({ state: "processing", detail: `Sculpting & texturing — ${status.progress}%` });
-          else if (status.status === "error") {
-            stopGeneration();
-            setGen({ state: "error", error: status.message || "Worker reported an error." });
-          }
-        } catch (err) {
-          stopGeneration();
-          setGen({ state: "error", error: String(err.message || err) });
-        }
-      }, POLL_MS);
-    } catch (err) {
-      setGen({ state: "error", error: String(err.message || err) });
+      await saveAvatar({ id, createdAt: Date.now(), image: imageDataUrl, clips: {} });
+      localStorage.setItem(ACTIVE_AVATAR_KEY, id);
+    } catch {
+      // IndexedDB unavailable (private browsing etc.) — animate without persistence.
     }
+    setInitialClips({});
+    setAvatarId(id);
+    setStep(2);
   }
 
-  // Pipeline-mode customization: batch every option into one constrained
-  // Gemini edit, then regenerate the mesh.
+  // Customization: one constrained Gemini edit, then a fresh avatar record —
+  // the edited character needs its own clips.
   async function applyCustomization() {
     if (!stylized) return;
     setApplying(true);
     try {
       const edited = await stylize(stylized, buildEditInstruction(options));
-      setStep(2);
-      await startGeneration(edited);
+      await animate(edited);
     } finally {
       setApplying(false);
     }
   }
 
-  const pipelineMode = pipeline.gemini && (pipeline.worker || workerOverride.trim().length > 0);
-  const avatarMode = rigged ? "rigged" : modelUrl ? "generated" : anim2d && stylized ? "video" : "mock";
-  const stepDone = { 1: !!stylized, 2: gen.state === "done", 3: false };
+  const stepDone = { 1: !!stylized, 2: false };
 
   return (
     <>
@@ -209,6 +129,9 @@ export default function Home() {
           <nav className="nav-links" aria-label="Site">
             <a className="nav-link" href="#studio">
               Studio
+            </a>
+            <a className="nav-link" href="/library">
+              Library
             </a>
             <a className="nav-link" href="#privacy">
               Privacy
@@ -236,8 +159,8 @@ export default function Home() {
                 </button>
               ))}
             </div>
-            <button type="button" className="btn-primary" onClick={() => setStep(photo ? 2 : 1)}>
-              {photo ? "Generate" : "Start"}
+            <button type="button" className="btn-primary" onClick={() => setStep(1)}>
+              {photo ? "New photo" : "Start"}
             </button>
           </div>
         </div>
@@ -247,15 +170,15 @@ export default function Home() {
         <p className="hero-eyebrow">Mirra</p>
         <h1 className="hero-headline">You, animated.</h1>
         <p className="hero-sub">
-          Upload a full-body photo and meet your Pixar-style 3D self — it breathes, blinks, and celebrates your wins
-          right in the page.
+          Upload a full-body photo and meet your Pixar-style animated self — it breathes, blinks, and celebrates your
+          wins right in the page.
         </p>
         <div className="hero-cta">
           <button type="button" className="btn-primary" onClick={() => setStep(1)}>
             Upload a photo
           </button>
         </div>
-        <p className="hero-note">Runs end-to-end in mock mode with zero API keys.</p>
+        <p className="hero-note">Your animated avatars are saved in your browser — nothing is stored on a server.</p>
       </section>
 
       <main className="page" id="studio">
@@ -273,52 +196,34 @@ export default function Home() {
               stylizedIsMock={stylizedIsMock}
               stylizeError={stylizeError}
               pipeline={pipeline}
-              workerOverride={workerOverride}
-              setWorkerOverride={setWorkerOverride}
-              onAnimate2D={() => {
-                setAnim2d(true);
-                setStep(3);
-              }}
-              onContinue={() => setStep(2)}
+              onAnimate={() => animate()}
               onRetry={() => photo && stylize(photo)}
             />
           </section>
         )}
 
         {step === 2 && (
-          <section className="section" aria-label="Step 2 — Generate">
-            <div className="section-head">
-              <h2 className="section-title">Sculpt it in 3D.</h2>
-              <p className="section-sub">An image-to-3D model turns the stylized reference into a textured mesh.</p>
-            </div>
-            <GeneratePanel
-              stylized={stylized}
-              stylizedIsMock={stylizedIsMock}
-              gen={gen}
-              onStart={() => startGeneration()}
-              mockMode={!pipeline.worker && !workerOverride.trim()}
-            />
-          </section>
-        )}
-
-        {step === 3 && (
-          <section className="section" aria-label="Step 3 — Your avatar">
+          <section className="section" aria-label="Step 2 — Your avatar">
             <div className="section-head">
               <h2 className="section-title">Meet your avatar.</h2>
-              <p className="section-sub">It idles on its own and reacts to everything you log.</p>
+              <p className="section-sub">It breathes and blinks on its own, and reacts to everything you log.</p>
             </div>
             <div className="stage-grid">
-              <StageCard mode={avatarMode} options={options} modelUrl={modelUrl} rigged={rigged} stylized={stylized} />
+              <StageCard
+                stylized={stylized}
+                avatarId={avatarId}
+                initialClips={initialClips}
+                animConfigured={pipeline.video}
+              />
               <div className="panel-stack">
                 <AchievementPanel />
                 <CustomizePanel
                   options={options}
                   onChange={setOptions}
-                  pipelineMode={pipelineMode}
+                  pipelineMode={pipeline.gemini}
                   onApply={applyCustomization}
                   applying={applying}
                 />
-                <RigPanel modelUrl={modelUrl} objUrl={objUrl} onRiggedUpload={setRigged} riggedName={rigged?.name} />
               </div>
             </div>
           </section>
@@ -327,8 +232,8 @@ export default function Home() {
 
       <footer className="footer" id="privacy">
         <div className="footer-inner">
-          Photos are processed in memory on the server and never persisted. Keys and worker URLs live server-side or as
-          your own typed input — nothing is stored.
+          Photos are processed in memory on the server and never persisted. Finished avatars and their animation clips
+          are stored only in your browser&apos;s local library.
         </div>
       </footer>
     </>

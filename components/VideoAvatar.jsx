@@ -1,71 +1,117 @@
 "use client";
 
 // 2D animated avatar: real motion clips generated from the stylized reference
-// by an image-to-video model. The idle loop (breathing, blinking, weight
-// shifts) plays continuously; each reaction is generated on first use, cached
-// for the session, and plays once before returning to idle.
+// by an image-to-video model.
+//
+// - Two idle loops (idle + a subtle variation) rotate to avoid the
+//   every-5-seconds déjà vu of a single loop.
+// - After the first idle is ready, the remaining clips (idle variation + all
+//   reactions) auto-generate sequentially in the background.
+// - Finished clips are downloaded once and persisted to the IndexedDB library
+//   (when avatarId is set); playback always runs from local blob URLs, so
+//   loop/reaction transitions are instant.
+// - A reaction triggered before its clip exists is bumped to the front of the
+//   queue and plays the moment it's ready.
 
 import { useEffect, useRef, useState } from "react";
-import { onReaction } from "@/lib/reactions";
+import { onReaction, REACTIONS, REACTION_LABELS } from "@/lib/reactions";
+import { saveClip } from "@/lib/library";
 
 const POLL_MS = 5000;
+const IDLES = ["idle", "idle2"];
+const AUTO_QUEUE = ["idle2", ...REACTIONS];
 
-export default function VideoAvatar({ image }) {
-  const [clips, setClips] = useState({});
-  const [activeClip, setActiveClip] = useState(null);
+export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
+  const [clips, setClips] = useState(initialClips);
+  const [activeReaction, setActiveReaction] = useState(null);
+  const [idleIdx, setIdleIdx] = useState(0);
   const [note, setNote] = useState(null);
-  const stateRef = useRef({ clips: {}, pending: new Set(), alive: true });
+  const [generating, setGenerating] = useState(null);
+  const s = useRef({ clips: { ...initialClips }, jobs: {}, alive: true }).current;
 
-  async function ensureClip(motion) {
-    const s = stateRef.current;
-    if (s.clips[motion]) return s.clips[motion];
-    if (s.pending.has(motion)) return null;
-    s.pending.add(motion);
-    try {
-      const res = await fetch("/api/animate", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: image.split(",")[1], motion }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `Animation failed (${res.status}).`);
-      while (s.alive) {
-        await new Promise((r) => setTimeout(r, POLL_MS));
-        const poll = await fetch(`/api/animate?task=${encodeURIComponent(json.taskId)}`);
-        const status = await poll.json();
-        if (status.status === "completed" && status.videoUrl) {
-          s.clips[motion] = status.videoUrl;
-          setClips({ ...s.clips });
-          return status.videoUrl;
+  function ensureClip(motion) {
+    if (s.clips[motion]) return Promise.resolve(s.clips[motion]);
+    if (s.jobs[motion]) return s.jobs[motion];
+    const job = (async () => {
+      try {
+        const res = await fetch("/api/animate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ image: image.split(",")[1], motion }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || `Animation failed (${res.status}).`);
+        while (s.alive) {
+          await new Promise((r) => setTimeout(r, POLL_MS));
+          const poll = await fetch(`/api/animate?task=${encodeURIComponent(json.taskId)}`);
+          const status = await poll.json();
+          if (status.status === "completed" && status.videoUrl) {
+            let url = status.videoUrl;
+            try {
+              const blob = await (await fetch(status.videoUrl)).blob();
+              url = URL.createObjectURL(blob);
+              if (avatarId) saveClip(avatarId, motion, blob).catch(() => {});
+            } catch {
+              // CDN refused the download — play the remote URL directly.
+            }
+            s.clips[motion] = url;
+            setClips({ ...s.clips });
+            return url;
+          }
+          if (status.status === "error") throw new Error(status.message || "Animation failed.");
         }
-        if (status.status === "error") throw new Error(status.message || "Animation failed.");
+        return null;
+      } finally {
+        delete s.jobs[motion];
       }
-      return null;
-    } catch (err) {
-      setNote(String(err.message || err));
-      return null;
-    } finally {
-      s.pending.delete(motion);
-    }
+    })();
+    s.jobs[motion] = job;
+    job.catch(() => {});
+    return job;
   }
 
   useEffect(() => {
-    const s = stateRef.current;
     s.alive = true;
-    ensureClip("idle");
+
+    (async () => {
+      try {
+        await ensureClip("idle");
+      } catch (err) {
+        if (s.alive) setNote(String(err.message || err));
+        return;
+      }
+      // Background queue: idle variation first, then every reaction.
+      for (const motion of AUTO_QUEUE) {
+        if (!s.alive) return;
+        if (s.clips[motion]) continue;
+        setGenerating(motion);
+        try {
+          await ensureClip(motion);
+        } catch {
+          // keep going — a failed clip can regenerate on demand later
+        }
+      }
+      if (s.alive) setGenerating(null);
+    })();
+
     const off = onReaction(async (name) => {
       const cached = s.clips[name];
       if (cached) {
-        setActiveClip({ motion: name, url: cached });
+        setActiveReaction({ motion: name, url: cached });
         return;
       }
-      setNote(`Animating “${name}” for the first time — it plays as soon as it’s ready (~1 min). Cached after that.`);
-      const url = await ensureClip(name);
-      if (url && s.alive) {
-        setNote(null);
-        setActiveClip({ motion: name, url });
+      setNote(`“${REACTION_LABELS[name] || name}” is still animating — it plays the moment it’s ready.`);
+      try {
+        const url = await ensureClip(name);
+        if (url && s.alive) {
+          setNote(null);
+          setActiveReaction({ motion: name, url });
+        }
+      } catch (err) {
+        if (s.alive) setNote(String(err.message || err));
       }
     });
+
     return () => {
       s.alive = false;
       off();
@@ -73,22 +119,33 @@ export default function VideoAvatar({ image }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [image]);
 
-  const idleUrl = clips.idle;
+  const idleUrls = IDLES.map((m) => clips[m]).filter(Boolean);
+  const idleUrl = idleUrls.length ? idleUrls[idleIdx % idleUrls.length] : null;
+
+  function handleIdleEnded(e) {
+    if (idleUrls.length > 1) setIdleIdx((i) => i + 1);
+    else {
+      e.target.currentTime = 0;
+      e.target.play();
+    }
+  }
+
+  const readyCount = AUTO_QUEUE.filter((m) => clips[m]).length;
 
   return (
     <div className="video-avatar">
-      {activeClip ? (
+      {activeReaction ? (
         <video
-          key={activeClip.motion + activeClip.url}
-          src={activeClip.url}
+          key={activeReaction.motion + activeReaction.url}
+          src={activeReaction.url}
           autoPlay
           muted
           playsInline
-          onEnded={() => setActiveClip(null)}
-          onError={() => setActiveClip(null)}
+          onEnded={() => setActiveReaction(null)}
+          onError={() => setActiveReaction(null)}
         />
       ) : idleUrl ? (
-        <video key={idleUrl} src={idleUrl} autoPlay muted loop playsInline />
+        <video key={idleIdx + idleUrl} src={idleUrl} autoPlay muted playsInline onEnded={handleIdleEnded} />
       ) : (
         <>
           <img src={image} alt="Stylized avatar" />
@@ -97,7 +154,13 @@ export default function VideoAvatar({ image }) {
           </div>
         </>
       )}
-      {note && <div className="video-avatar-note">{note}</div>}
+      {note ? (
+        <div className="video-avatar-note">{note}</div>
+      ) : generating ? (
+        <div className="video-avatar-note video-avatar-note--quiet">
+          Animating “{REACTION_LABELS[generating] || generating}” in the background ({readyCount}/{AUTO_QUEUE.length})
+        </div>
+      ) : null}
     </div>
   );
 }

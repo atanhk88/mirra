@@ -18,9 +18,15 @@ const STYLE =
 
 const MOTION_PROMPTS = {
   idle:
-    "The character stands in place, breathing gently and visibly — chest and shoulders rise and fall. " +
-    "They blink naturally every few seconds and shift their weight very subtly. Calm, friendly, relaxed expression. " +
-    "The motion is subtle and continuous, suitable as a seamless idle loop, ending in the same relaxed standing pose as the start. " +
+    "The character stands in place, breathing gently and visibly — chest and shoulders rise and fall softly. " +
+    "They blink naturally every few seconds. Their feet stay planted and their posture barely changes; " +
+    "any weight shift is barely perceptible. Calm, friendly, relaxed expression. " +
+    "The motion is minimal and continuous, suitable as a seamless idle loop, ending in the same relaxed standing pose as the start. " +
+    STYLE,
+  idle2:
+    "The character stands in place, breathing gently — chest and shoulders rise and fall softly, blinking naturally. " +
+    "Once, they glance briefly to one side with mild curiosity and give a soft small smile, then look forward again. " +
+    "Feet stay planted, posture barely changes. The clip starts and ends in the same relaxed standing pose. " +
     STYLE,
   celebrate:
     "The character bursts into celebration — throws both arms up, jumps joyfully with a huge smile, " +
@@ -28,12 +34,27 @@ const MOTION_PROMPTS = {
   wave:
     "The character raises one hand and waves hello warmly, smiling, looking at the viewer, " +
     "then lowers the hand back to a relaxed standing pose. " + STYLE,
+  clap:
+    "The character claps their hands enthusiastically with a delighted smile, applauding, " +
+    "then lowers their hands back to a relaxed standing pose. " + STYLE,
+  nod:
+    "The character nods approvingly with a warm smile, agreeing confidently, " +
+    "then returns to a relaxed standing pose. " + STYLE,
+  laugh:
+    "The character laughs heartily — head tips back slightly, shoulders shake with laughter, eyes crinkle, " +
+    "then they settle back into a relaxed standing pose with a lingering smile. " + STYLE,
+  dance:
+    "The character does a small, fun dance groove in place — bouncing to a beat, arms moving playfully, " +
+    "then settles back into a relaxed standing pose. " + STYLE,
   think:
     "The character looks up thoughtfully, brings one hand to their chin, pondering with a curious expression, " +
     "then returns to a relaxed standing pose. " + STYLE,
   proud:
     "The character stands tall, puts both hands on their hips, lifts their chin with a proud confident smile, " +
     "then relaxes back to a natural standing pose. " + STYLE,
+  shrug:
+    "The character shrugs — shoulders rise, palms turn up and out, with a puzzled but good-natured expression, " +
+    "then drops their arms back to a relaxed standing pose. " + STYLE,
   slump:
     "The character sighs — shoulders slump, head drops, arms hang heavily, looking dejected, " +
     "then slowly straightens back up to a neutral standing pose. " + STYLE,

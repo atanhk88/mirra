@@ -1040,3 +1040,36 @@ a {
 .video-avatar-note {
   bottom: 24px;
 }
+
+.video-avatar-note--quiet {
+  background: rgba(0, 0, 0, 0.38);
+  font-size: 12.5px;
+}
+
+/* Library page */
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-16);
+}
+
+.library-preview {
+  height: 320px;
+  border-radius: var(--radius-cards);
+  background: var(--surface-recessed);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library-preview video,
+.library-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.library-meta {
+  margin-top: var(--spacing-12);
+}

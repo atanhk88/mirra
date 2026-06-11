@@ -1,9 +1,9 @@
 # Mirra — You, animated.
 
-Upload a full-body photo and get a Disney/Pixar-style 3D avatar that lives in the UI: it idles
-(breathes, sways, blinks) and reacts to what you do — log an achievement and it celebrates with
-confetti, remove one and it slumps. Always a grounded, recognizable cartoon version of *you* —
-never fantasy.
+Upload a full-body photo and get a Disney/Pixar-style animated avatar that lives in the UI: it
+breathes, blinks, and glances around on its own, and reacts to what you do — log an achievement
+and it celebrates, remove one and it slumps. Always a grounded, recognizable cartoon version of
+*you* — never fantasy.
 
 ## Run it
 
@@ -12,105 +12,84 @@ npm install
 npm run dev
 ```
 
-That's it. **Zero env vars are required** — without keys the app runs the entire flow in mock
-mode: a CSS-filter stand-in replaces Gemini stylization, the 3D generation is simulated, and a
-procedural Pixar-proportioned mock avatar performs the full idle + reaction system on stage.
-
 Deployable to Vercel as-is (`next build`).
 
-### Env vars (Phase 2 — the real pipeline)
+### Env vars
 
 | Variable | Purpose |
 | --- | --- |
 | `GEMINI_API_KEY` | Google Gemini API key for photo → cartoon stylization |
 | `GEMINI_IMAGE_MODEL` | Gemini image model id (default `gemini-3.5-flash`; must support image output) |
-| `MESHY_API_KEY` | Meshy hosted image-to-3D — character-focused, free monthly credit tier |
-| `MESHY_AI_MODEL` | Meshy model generation (default `meshy-5`) |
-| `REPLICATE_API_TOKEN` | Replicate token — hosted Hunyuan3D (~$0.1/generation) and 2D motion clips |
-| `REPLICATE_MODEL` | Replicate model (default `ndreca/hunyuan3d-2`, which returns a textured mesh) |
-| `REPLICATE_VIDEO_MODEL` | Image-to-video model for 2D animation (default `bytedance/seedance-1-lite`, ~$0.02/s) |
-| `HUNYUAN_SERVER_URL` | Base URL of a self-hosted Hunyuan3D worker (see [docs/HUNYUAN_SETUP.md](docs/HUNYUAN_SETUP.md)) |
+| `REPLICATE_API_TOKEN` | Replicate token — generates the animation clips |
+| `REPLICATE_VIDEO_MODEL` | Image-to-video model (default `bytedance/seedance-1-lite`, ~$0.02/s ≈ $0.10 per 5 s clip) |
 
-For 3D generation, set **one of** `MESHY_API_KEY` (hosted, best avatar quality), `REPLICATE_API_TOKEN`
-(hosted Hunyuan3D), or `HUNYUAN_SERVER_URL` (self-hosted/Colab, free). Priority when several are set:
-worker URL override (per-session field in step 1, sent as an `x-worker-url` header, never stored) →
-`HUNYUAN_SERVER_URL` → Meshy → Replicate. Keys only ever live server-side. With hosted providers the
-browser downloads the finished GLB straight from the provider's CDN (with a same-origin proxy
-fallback), sidestepping serverless response-size limits.
+Without keys the app still demos: a CSS-filter stand-in replaces Gemini stylization and the stage
+shows the static reference with a setup note. Keys only ever live server-side.
 
 ## The pipeline
 
 ```
- ┌────────────┐   POST /api/stylize    ┌─────────────┐   POST /api/generate-3d   ┌──────────────────┐
- │ Full-body  │ ─────────────────────▶ │   Gemini    │ ────────────────────────▶ │  Hunyuan3D worker │
- │   photo    │   (≤1024px, in-memory) │  image API  │   { image, texture:true } │  (your GPU/Colab) │
- └────────────┘                        └─────────────┘                           └──────────────────┘
-       │                                     │                                          │
-       │                              stylized A-pose PNG                    poll /status/{uid} every 4s
-       │                                     │                                          │
-       ▼                                     ▼                                          ▼
-   never persisted                  shown as "reference"               textured GLB → three.js stage
-                                                                                        │
-                                                                       optional: Mixamo auto-rig (FBX)
-                                                                                        │
-                                                                                        ▼
-                                                                       named clips drive the reactions
+ ┌────────────┐  POST /api/stylize   ┌─────────────┐  POST /api/animate    ┌─────────────────────┐
+ │ Full-body  │ ───────────────────▶ │   Gemini    │ ────────────────────▶ │ Replicate img-to-vid │
+ │   photo    │  (≤1024px, memory)   │  image API  │  { image, motion }    │ (Seedance, fixed cam)│
+ └────────────┘                      └─────────────┘                       └─────────────────────┘
+       │                                    │                                       │
+       │                          stylized reference PNG                 poll ?task= every 5s
+       │                                    │                                       │
+       ▼                                    ▼                                       ▼
+  never persisted                  shown as "reference"            mp4 clips → <video> stage
+                                                                              │
+                                                              downloaded once, stored in the
+                                                              browser's IndexedDB library
 ```
 
 1. **Stylize (Gemini).** `POST /api/stylize` turns the photo into a Pixar-style full-body
-   character in a relaxed A-pose on a white background — the pose image-to-3D rigs best from.
-   Customization edits reuse the same route with a constrained "change ONLY: …" instruction.
-2. **Generate 3D (Hunyuan3D, self-hosted & free).** `POST /api/generate-3d` proxies the image to
-   your `api_server.py` worker; `GET ?task=` polls and finally streams the textured GLB.
-3. **Animate & react (three.js + GSAP).** Two strictly separated layers: a procedural idle layer
-   (`useFrame`: breath, bob, sway, head drift, blinks) and a GSAP reaction layer (celebrate, wave,
-   think, proud, slump) fired through a tiny pub/sub bus (`lib/reactions.js`). Unrigged Hunyuan
-   meshes react with whole-body puppet motion (squash-and-stretch hops, tilts, leans); models with
-   animation clips get keyword-matched crossfades.
-4. **Rig upgrade (Mixamo, free).** Download the GLB, auto-rig at mixamo.com, pick clips, upload
-   the FBX/GLB back — named clips take over matching reactions.
+   character. Customization edits reuse the same route with a constrained "change ONLY: …"
+   instruction and produce a fresh avatar.
+2. **Animate (Replicate image-to-video).** `POST /api/animate` generates one ~5 s clip per
+   motion: two idle loops (gentle breathing/blinking, plus a subtle glance variation — the stage
+   rotates between them so the loop never feels canned), then every reaction auto-generates in
+   the background. A reaction triggered early jumps the queue and plays the moment it's ready.
+3. **React.** Reactions (celebrate, wave, clap, nod, laugh, dance, think, proud, shrug, slump)
+   fire through a tiny pub/sub bus (`lib/reactions.js`); the stage plays the matching clip once,
+   then returns to the idle rotation.
+4. **Library.** Finished clips are downloaded once and persisted as Blobs in IndexedDB
+   (`lib/library.js`) — replays are instant, Replicate URL expiry doesn't matter, and `/library`
+   lists every avatar with open/delete.
 
 ## Architecture map
 
 ```
 app/
-  layout.jsx                 Root layout + metadata
-  page.jsx                   App state, stepper flow, generation polling
-  globals.css                Design tokens (verbatim from DESIGN.md) + all styles
-  api/stylize/route.js       Gemini stylize/edit (server-only key, image never persisted)
-  api/generate-3d/route.js   Stateless Hunyuan3D proxy (env URL or x-worker-url header)
+  layout.jsx              Root layout + metadata
+  page.jsx                App state, two-step flow, library resume
+  library/page.jsx        Avatar library (IndexedDB) with open/delete
+  globals.css             Design tokens (verbatim from DESIGN.md) + all styles
+  api/stylize/route.js    Gemini stylize/edit (server-only key, image never persisted)
+  api/animate/route.js    Image-to-video motion clips (per-motion prompts, fixed camera)
 components/
-  UploadPanel.jsx            Drag-and-drop, client-side ≤1024px downscale, pipeline status
-  GeneratePanel.jsx          Progress card (sculpting → texturing), mock simulation notice
-  StageCard.jsx              Stage card, backdrop gradient swatches, dynamic(ssr:false) canvas
-  AchievementPanel.jsx       Add → celebrate + confetti; remove → slump; manual reaction tuning
-  CustomizePanel.jsx         Grounded options; instant in mock mode, batched edit in pipeline mode
-  RigPanel.jsx               Mixamo download/upload flow
-  stage/
-    Stage.jsx                Alpha canvas, three-point lighting, contact shadow, orbit controls
-    MockAvatar.jsx           Procedural Pixar-proportioned stand-in (full idle + reactions)
-    ModelAvatar.jsx          Normalization, clip matching via AnimationMixer, puppet fallback
-    GeneratedModel.jsx       Hunyuan GLB loader
-    RiggedModel.jsx          Mixamo FBX/GLB loader
-    Confetti.jsx             Instanced confetti burst on celebrate
-    useIdleMotion.js         The procedural idle layer
+  UploadPanel.jsx         Drag-and-drop, client-side ≤1024px downscale, pipeline status
+  StageCard.jsx           Stage card hosting the animated avatar
+  VideoAvatar.jsx         Idle rotation, background generation queue, IndexedDB persistence
+  AchievementPanel.jsx    Add → celebrate; remove → slump; manual reaction tuning
+  CustomizePanel.jsx      Grounded options; batched Gemini edit → fresh avatar
 lib/
-  reactions.js               Pub/sub reaction bus
-  puppet.js                  GSAP reaction timelines (settle-to-base, kill-on-interrupt)
-  customize.js               Grounded option palettes + edit-instruction builder
-docs/
-  HUNYUAN_SETUP.md           Local + Colab worker setup
+  reactions.js            Pub/sub reaction bus + reaction list
+  replicate.js            Replicate REST helpers (version cache, file upload, 429 retry)
+  library.js              IndexedDB avatar store (records: image + clip Blobs)
+  customize.js            Grounded option palettes + edit-instruction builder
 ```
 
 ## Notes & limits
 
-- **three.js never runs on the server** — the stage loads via `next/dynamic({ ssr: false })`.
-- **Privacy:** photos are downscaled in the browser, processed in memory on the server, and never
-  persisted. The UI says so too.
-- **GLB size on Vercel:** streaming a 20–40 MB GLB through a serverless function can exceed
-  response body limits. The proxy works locally / self-hosted; in production, have the worker (or
-  the route) upload the GLB to blob storage (e.g. Vercel Blob, S3) and hand the client a URL.
-- **No facial blendshapes:** Mixamo auto-rigging gives body skeletons only — emotion reads through
-  posture and body language.
+- **Cost:** ~$0.10 per clip (Seedance Lite, 480p, 5 s). A fully warmed-up avatar — two idles plus
+  ten reactions — is ~$1.20, generated once and cached forever in the browser.
+- **Rate limits:** Replicate accounts holding <$5 credit are throttled to ~1 clip creation per
+  minute; the background queue generates sequentially so this is usually invisible. Topping up
+  to $5+ removes the limit.
+- **Privacy:** photos are downscaled in the browser, processed in memory on the server, never
+  persisted server-side. Avatars and clips live only in the browser's IndexedDB.
+- **Loop seam:** each idle clip is prompted to end in its starting pose; the rotation between two
+  idle variants masks most of the remaining seam.
 - **Grounded by design:** every prompt repeats "no fantasy elements, everyday clothing, same
   person".

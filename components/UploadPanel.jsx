@@ -29,10 +29,7 @@ export default function UploadPanel({
   stylizedIsMock,
   stylizeError,
   pipeline,
-  workerOverride,
-  setWorkerOverride,
-  onAnimate2D,
-  onContinue,
+  onAnimate,
   onRetry,
 }) {
   const inputRef = useRef();
@@ -42,8 +39,6 @@ export default function UploadPanel({
     if (!file || !file.type.startsWith("image/")) return;
     onPhoto(await downscale(file));
   }
-
-  const workerOn = pipeline.worker || workerOverride.trim().length > 0;
 
   return (
     <div className="upload-grid">
@@ -88,8 +83,7 @@ export default function UploadPanel({
       <div className="card">
         <h3 className="card-title">Stylized reference</h3>
         <p className="card-sub">
-          Gemini redraws you as a grounded Pixar-style character in a relaxed A-pose — the pose image-to-3D rigs best
-          from.
+          Gemini redraws you as a grounded Pixar-style character — this reference is what gets animated.
         </p>
         <div className="preview-frame">
           {stylizing ? (
@@ -115,32 +109,20 @@ export default function UploadPanel({
         {stylized && !stylizing && (
           <div className="panel-actions" style={{ flexDirection: "column", alignItems: "flex-start", gap: "var(--spacing-8)" }}>
             <div style={{ display: "flex", gap: "var(--spacing-8)", flexWrap: "wrap" }}>
-              {pipeline.video ? (
-                <>
-                  <button type="button" className="btn-primary" onClick={onAnimate2D}>
-                    Animate me in 2D →
-                  </button>
-                  <button type="button" className="btn-small" onClick={onContinue}>
-                    Generate 3D instead
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="btn-primary" onClick={onContinue}>
-                  Continue to Generate
-                </button>
-              )}
+              <button type="button" className="btn-primary" onClick={onAnimate} disabled={!pipeline.video}>
+                Animate me →
+              </button>
               {pipeline.gemini && stylizedIsMock && (
                 <button type="button" className="btn-small" onClick={onRetry}>
                   Retry stylize
                 </button>
               )}
             </div>
-            {pipeline.video && (
-              <p className="card-sub" style={{ margin: 0 }}>
-                2D animation generates real motion clips (breathing, blinking, reactions) from your reference — about a
-                minute and ~$0.10 per clip on your Replicate account, cached once generated.
-              </p>
-            )}
+            <p className="card-sub" style={{ margin: 0 }}>
+              {pipeline.video
+                ? "Real motion clips (breathing, blinking, reactions) are generated from your reference — about a minute each and ~$0.10 per clip on your Replicate account. Everything is cached to your local library."
+                : "Add REPLICATE_API_TOKEN to your deployment to enable animation."}
+            </p>
           </div>
         )}
       </div>
@@ -153,35 +135,15 @@ export default function UploadPanel({
             <span className={pipeline.gemini ? "status-on" : "status-off"}>{pipeline.gemini ? "✓ configured" : "— mock mode"}</span>
           </span>
           <span className="status-chip">
-            3D generation{" "}
-            <span className={workerOn ? "status-on" : "status-off"}>
-              {workerOverride.trim()
-                ? "✓ worker override"
-                : pipeline.backend === "meshy"
-                  ? "✓ Meshy (hosted)"
-                  : pipeline.backend === "replicate"
-                    ? "✓ Replicate (hosted)"
-                    : pipeline.worker
-                      ? "✓ Hunyuan3D worker"
-                      : "— mock mode"}
+            2D animation{" "}
+            <span className={pipeline.video ? "status-on" : "status-off"}>
+              {pipeline.video ? "✓ Replicate (hosted)" : "— not configured"}
             </span>
           </span>
         </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="worker-url">
-            Worker URL override
-          </label>
-          <input
-            id="worker-url"
-            className="text-input"
-            value={workerOverride}
-            onChange={(e) => setWorkerOverride(e.target.value)}
-            placeholder="https://your-tunnel.trycloudflare.com"
-          />
-        </div>
         <p className="card-sub" style={{ marginTop: "var(--spacing-12)" }}>
-          Colab tunnel URLs change each session — paste the current one here. See <code>docs/HUNYUAN_SETUP.md</code>.
-          Without keys, everything still demos end-to-end in mock mode.
+          Keys live server-side only. Generated avatars and clips are stored in your browser&apos;s library — nothing
+          is uploaded anywhere else.
         </p>
       </div>
     </div>
