@@ -166,10 +166,11 @@ export async function GET(req) {
     const json = await res.json();
     if (json.status === "SUCCEEDED") {
       const modelUrl = json.model_urls?.glb;
+      const objUrl = json.model_urls?.obj || null;
       if (!modelUrl) {
         return Response.json({ status: "error", message: "Meshy finished but returned no GLB URL." });
       }
-      return Response.json({ status: "completed", modelUrl });
+      return Response.json({ status: "completed", modelUrl, objUrl });
     }
     if (json.status === "FAILED" || json.status === "CANCELED") {
       return Response.json({ status: "error", message: json.task_error?.message || `Task ${json.status.toLowerCase()}.` });
@@ -271,7 +272,7 @@ export async function POST(req) {
       enable_pbr: false,
       // A-pose meshes read much better under the puppet animation layer.
       pose_mode: "a-pose",
-      target_formats: ["glb"],
+      target_formats: ["glb", "obj"],
       target_polycount: 30000,
     };
     let res;

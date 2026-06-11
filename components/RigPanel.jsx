@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 
-export default function RigPanel({ modelUrl, onRiggedUpload, riggedName }) {
+export default function RigPanel({ modelUrl, objUrl, onRiggedUpload, riggedName }) {
   const fileRef = useRef();
 
   function handleFile(file) {
@@ -22,7 +22,8 @@ export default function RigPanel({ modelUrl, onRiggedUpload, riggedName }) {
 
       <ol className="rig-steps">
         <li>
-          Download your generated avatar below, then upload it at{" "}
+          Download the <strong>OBJ file</strong> below (Mixamo requires OBJ or FBX — GLB is not accepted), then upload
+          it at{" "}
           <a href="https://www.mixamo.com" target="_blank" rel="noreferrer">
             mixamo.com
           </a>{" "}
@@ -33,12 +34,16 @@ export default function RigPanel({ modelUrl, onRiggedUpload, riggedName }) {
       </ol>
 
       <div className="panel-actions">
-        {modelUrl ? (
+        {objUrl ? (
+          <a className="btn-small" href={objUrl} download="mirra-avatar.obj" target="_blank" rel="noreferrer">
+            Download OBJ (for Mixamo)
+          </a>
+        ) : modelUrl ? (
           <a className="btn-small" href={modelUrl} download="mirra-avatar.glb">
             Download GLB
           </a>
         ) : (
-          <span className="field-label">Generate a 3D model first to download a GLB (mock avatar has no file).</span>
+          <span className="field-label">Generate a 3D model first to download (mock avatar has no file).</span>
         )}
         <button type="button" className="btn-primary" onClick={() => fileRef.current?.click()}>
           Upload rigged FBX / GLB
