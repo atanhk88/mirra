@@ -7,7 +7,7 @@
 //   GET  ?task=<id>  → { status } | { status: "completed", videoUrl }
 //   GET  (no params) → { configured } for the UI
 
-import { createPrediction, getPrediction, uploadImage, pickFileUrl } from "@/lib/replicate";
+import { createPrediction, getPrediction, pickFileUrl } from "@/lib/replicate";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -112,7 +112,11 @@ export async function POST(req) {
   }
 
   const model = process.env.REPLICATE_VIDEO_MODEL || "bytedance/seedance-1-lite";
-  const input = { image: await uploadImage(token, body.image), prompt };
+  // Data URI, not the files API: its download URLs have no file extension,
+  // which breaks the model's format detection. The client compresses the
+  // image below Replicate's data-URI size limit.
+  const mime = body.mime === "image/jpeg" ? "image/jpeg" : "image/png";
+  const input = { image: `data:${mime};base64,${body.image}`, prompt };
   // Seedance-specific knobs; other models get the universal image+prompt pair.
   if (model.includes("seedance")) {
     input.duration = 5;

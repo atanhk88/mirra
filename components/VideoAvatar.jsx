@@ -21,6 +21,31 @@ const POLL_MS = 5000;
 const IDLES = ["idle", "idle2"];
 const AUTO_QUEUE = ["idle2", ...REACTIONS];
 
+// The video model validates input format from the URL's file extension, so
+// the image goes up as a data URI (mime included) — which must stay under
+// Replicate's ~256KB data-URI limit. 768px JPEG is plenty for 480p output.
+function prepareImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 768 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      for (const q of [0.85, 0.7, 0.55, 0.4]) {
+        const out = canvas.toDataURL("image/jpeg", q);
+        if (out.length * 0.75 < 240 * 1024 || q === 0.4) {
+          resolve(out);
+          return;
+        }
+      }
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
   const [clips, setClips] = useState(initialClips);
   const [activeReaction, setActiveReaction] = useState(null);
@@ -34,10 +59,12 @@ export default function VideoAvatar({ image, avatarId, initialClips = {} }) {
     if (s.jobs[motion]) return s.jobs[motion];
     const job = (async () => {
       try {
+        if (!s.prepared) s.prepared = prepareImage(image);
+        const prepared = await s.prepared;
         const res = await fetch("/api/animate", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ image: image.split(",")[1], motion }),
+          body: JSON.stringify({ image: prepared.split(",")[1], mime: "image/jpeg", motion }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || `Animation failed (${res.status}).`);
