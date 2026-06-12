@@ -66,8 +66,9 @@ Auth is deliberately lean: scrypt password hashes and HMAC-signed HttpOnly sessi
 
 ```
 app/
-  layout.jsx                    Root layout + metadata
-  page.jsx                      App state, three-step flow, clip generation, cloud sync
+  layout.jsx                    Root layout + metadata + shared SiteNav
+  page.jsx                      Marketing home (landing) — CTAs into studio/account
+  studio/page.jsx               The app: three-step flow, clip generation, cloud sync
   library/page.jsx              Avatar library — merged local (IndexedDB) + cloud view
   account/page.jsx              Sign in / sign up / sign out
   globals.css                   Design tokens (verbatim from DESIGN.md) + all styles
@@ -78,6 +79,7 @@ app/
   api/avatars/[id]/route.js     Cloud library: get one, delete (row + blobs)
   api/avatars/[id]/clips/route.js  Replicate output URL → Vercel Blob re-upload
 components/
+  SiteNav.jsx                   Shared top nav — links + connected-email / log-in button
   UploadPanel.jsx               Drag-and-drop, client-side ≤1024px downscale, pipeline status
   StageCard.jsx                 Stage card hosting the animated avatar
   VideoAvatar.jsx               Pure playback: idle crossfade rotation + reaction overlay

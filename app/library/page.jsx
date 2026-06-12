@@ -61,7 +61,7 @@ export default function LibraryPage() {
 
   function open(id) {
     localStorage.setItem(ACTIVE_AVATAR_KEY, id);
-    window.location.href = "/";
+    window.location.href = "/studio";
   }
 
   async function remove(record) {
@@ -74,25 +74,7 @@ export default function LibraryPage() {
   }
 
   return (
-    <>
-      <header className="nav">
-        <div className="nav-inner">
-          <span className="nav-brand">Mirra</span>
-          <nav className="nav-links" aria-label="Site">
-            <a className="nav-link" href="/">
-              Studio
-            </a>
-            <a className="nav-link" href="/library" aria-current="page">
-              Library
-            </a>
-            <a className="nav-link" href="/account">
-              Account
-            </a>
-          </nav>
-        </div>
-      </header>
-
-      <main className="page">
+    <main className="page">
         <section className="section" aria-label="Avatar library">
           <div className="section-head">
             <h2 className="section-title">Your library.</h2>
@@ -141,7 +123,6 @@ export default function LibraryPage() {
             </div>
           )}
         </section>
-      </main>
-    </>
+    </main>
   );
 }

@@ -47,25 +47,7 @@ export default function AccountPage() {
   }
 
   return (
-    <>
-      <header className="nav">
-        <div className="nav-inner">
-          <span className="nav-brand">Mirra</span>
-          <nav className="nav-links" aria-label="Site">
-            <a className="nav-link" href="/">
-              Studio
-            </a>
-            <a className="nav-link" href="/library">
-              Library
-            </a>
-            <a className="nav-link" href="/account" aria-current="page">
-              Account
-            </a>
-          </nav>
-        </div>
-      </header>
-
-      <main className="page">
+    <main className="page">
         <section className="section" aria-label="Account">
           <div className="section-head">
             <h2 className="section-title">Your account.</h2>
@@ -154,7 +136,6 @@ export default function AccountPage() {
             )}
           </div>
         </section>
-      </main>
-    </>
+    </main>
   );
 }
