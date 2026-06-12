@@ -1145,6 +1145,18 @@ a {
   font-size: 12.5px;
 }
 
+/* Account page */
+.account-card {
+  max-width: 480px;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-12);
+  margin-top: var(--spacing-16);
+}
+
 /* Library page */
 .library-grid {
   display: grid;

@@ -8,6 +8,7 @@ import CustomizePanel from "@/components/CustomizePanel";
 import ReactionsPanel from "@/components/ReactionsPanel";
 import { DEFAULT_OPTIONS, buildEditInstruction } from "@/lib/customize";
 import { saveAvatar, saveClip, getAvatar, ACTIVE_AVATAR_KEY } from "@/lib/library";
+import { fetchAccount, createCloudAvatar, getCloudAvatar, saveCloudClip } from "@/lib/cloud";
 
 const STEPS = [
   { id: 1, label: "Photo" },
@@ -18,6 +19,8 @@ const STEPS = [
 function prepareImage(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // Cloud references are remote Blob URLs — CORS keeps the canvas readable.
+    img.crossOrigin = "anonymous";
     img.onload = () => {
       const scale = Math.min(1, 768 / Math.max(img.width, img.height));
       const canvas = document.createElement("canvas");
@@ -40,6 +43,8 @@ function prepareImage(dataUrl) {
 export default function Home() {
   const [step, setStep] = useState(1);
   const [pipeline, setPipeline] = useState({ gemini: false, video: false });
+  const [user, setUser] = useState(null);
+  const userRef = useRef(null);
 
   const [photo, setPhoto] = useState(null);
   const [stylized, setStylized] = useState(null);
@@ -70,22 +75,40 @@ export default function Home() {
       .then((j) => setPipeline((p) => ({ ...p, video: !!j.configured })))
       .catch(() => {});
 
+    const accountReady = fetchAccount()
+      .then((j) => {
+        userRef.current = j.user;
+        setUser(j.user);
+        return j.user;
+      })
+      .catch(() => null);
+
+    // Resume the last-opened avatar: local IndexedDB cache first, then the
+    // cloud library (avatars created on another device play from Blob URLs).
     const activeId = localStorage.getItem(ACTIVE_AVATAR_KEY);
     if (activeId) {
+      const restore = (image, loaded) => {
+        clipsRef.current = loaded;
+        setClips(loaded);
+        stylizedRef.current = image;
+        setStylized(image);
+        avatarIdRef.current = activeId;
+        setAvatarId(activeId);
+        setStep(3);
+      };
       getAvatar(activeId)
-        .then((record) => {
-          if (!record) return;
-          const loaded = {};
-          for (const [motion, blob] of Object.entries(record.clips || {})) {
-            loaded[motion] = URL.createObjectURL(blob);
+        .then(async (record) => {
+          if (record) {
+            const loaded = {};
+            for (const [motion, blob] of Object.entries(record.clips || {})) {
+              loaded[motion] = URL.createObjectURL(blob);
+            }
+            restore(record.image, loaded);
+            return;
           }
-          clipsRef.current = loaded;
-          setClips(loaded);
-          stylizedRef.current = record.image;
-          setStylized(record.image);
-          avatarIdRef.current = record.id;
-          setAvatarId(record.id);
-          setStep(3);
+          if (!(await accountReady)) return;
+          const remote = await getCloudAvatar(activeId);
+          restore(remote.imageUrl, { ...remote.clips });
         })
         .catch(() => {});
     }
@@ -149,6 +172,10 @@ export default function Home() {
     } catch {
       // IndexedDB unavailable — animate without persistence.
     }
+    if (userRef.current && img.startsWith("data:")) {
+      // Signed in: mirror the record to the cloud library (non-blocking).
+      createCloudAvatar(id, img).catch(() => {});
+    }
     clipsRef.current = {};
     setClips({});
     generatingRef.current = {};
@@ -205,11 +232,16 @@ export default function Home() {
         const poll = await fetch(`/api/animate?task=${encodeURIComponent(json.taskId)}`);
         const status = await poll.json();
         if (status.status === "completed" && status.videoUrl) {
+          const id = avatarIdRef.current;
+          if (id && userRef.current) {
+            // Replicate's output URL expires — the server re-uploads it to
+            // Vercel Blob now, while it's still live (non-blocking).
+            saveCloudClip(id, motion, status.videoUrl).catch(() => {});
+          }
           let url = status.videoUrl;
           try {
             const blob = await (await fetch(status.videoUrl)).blob();
             url = URL.createObjectURL(blob);
-            const id = avatarIdRef.current;
             if (id) saveClip(id, motion, blob).catch(() => {});
           } catch {
             // CDN refused — play remote URL directly.
@@ -240,6 +272,7 @@ export default function Home() {
           <nav className="nav-links" aria-label="Site">
             <a className="nav-link" href="#studio">Studio</a>
             <a className="nav-link" href="/library">Library</a>
+            <a className="nav-link" href="/account">{user ? "Account ✓" : "Account"}</a>
             <a className="nav-link" href="#privacy">Privacy</a>
           </nav>
           <span className="nav-badge">New</span>
